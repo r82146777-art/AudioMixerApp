@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/menu_guide"
+        android:title="@string/menu_guide"
+        android:contentDescription="راهنمای برنامه"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/menu_about"
+        android:title="@string/menu_about"
+        android:contentDescription="درباره ما و گروه تکنولوژی همدل"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/menu_effects"
+        android:title="@string/menu_effects"
+        android:contentDescription="جستجوی افکت‌های صوتی از اینترنت"
+        app:showAsAction="never" />
+</menu>

@@ -1,22 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">میکسر صوتی</string>
+    <string name="app_name">میکسر صوتی همدل</string>
     <string name="select_main_file">انتخاب فایل اصلی</string>
     <string name="select_bg_file">انتخاب فایل پس‌زمینه</string>
     <string name="main_volume">صدای فایل اصلی</string>
     <string name="bg_volume">صدای فایل پس‌زمینه</string>
     <string name="output_format">فرمت خروجی</string>
-    <string name="format_mp3">MP3</string>
+    <string name="format_mp3">MP3 / M4A</string>
     <string name="format_wav">WAV</string>
     <string name="mix_create">میکس و ساخت فایل</string>
     <string name="play_result">پخش نتیجه</string>
     <string name="pause_result">مکث</string>
     <string name="save_to_downloads">ذخیره در دانلودها</string>
+    <string name="reset">بازنشانی همه</string>
     <string name="no_file_selected">هیچ فایلی انتخاب نشده</string>
-    <string name="mixing">در حال میکس...</string>
+    <string name="mixing">در حال میکس... لطفاً صبر کنید</string>
     <string name="mix_success">میکس با موفقیت انجام شد</string>
     <string name="mix_failed">خطا در میکس فایل‌ها</string>
-    <string name="permission_needed">دسترسی به فایل‌ها لازم است</string>
+    <string name="permission_needed">دسترسی به فایل‌ها و میکروفون لازم است</string>
     <string name="saved_success">فایل در پوشه دانلودها ذخیره شد</string>
     <string name="select_both_files">لطفاً هر دو فایل را انتخاب کنید</string>
+    <string name="menu_guide">راهنمای برنامه</string>
+    <string name="menu_about">درباره ما</string>
+    <string name="menu_effects">جستجوی افکت‌ها</string>
+    <string name="record_start">شروع ضبط صدا</string>
+    <string name="record_stop">توقف ضبط</string>
+    <string name="record_delete">حذف صدای ضبط‌شده</string>
+    <string name="record_use_as_main">استفاده از ضبط به عنوان فایل اصلی</string>
+    <string name="recording">در حال ضبط...</string>
+    <string name="record_saved">ضبط ذخیره شد</string>
+    <string name="invite_title">دعوت به کانال آکادمی همدل</string>
+    <string name="invite_message">به کانال تلگرامی آکادمی همدل بپیوندید تا از آموزش‌ها و به‌روزرسانی‌ها مطلع شوید.\n\nt.me/Akademi_hamdel</string>
+    <string name="invite_join">عضو می‌شوم</string>
+    <string name="invite_cancel">لغو</string>
+    <string name="invite_dont_show">دیگر نشان نده</string>
+    <string name="copy_link">کپی لینک کانال</string>
+    <string name="link_copied">لینک کپی شد</string>
+    <string name="about_text">گروه تکنولوژی همدل\n\nمدیران:\n• رضا ایمان‌زاده\n• امیرحسین بابایی\n\nکانال آکادمی همدل:\nt.me/Akademi_hamdel\n\nاین برنامه برای میکس آسان فایل‌های صوتی طراحی شده است.</string>
+    <string name="guide_text">راهنمای استفاده:\n\n۱. فایل اصلی (صدا یا موسیقی اصلی) را انتخاب کنید.\n۲. فایل پس‌زمینه را انتخاب کنید.\n۳. ولوم هر کدام را تنظیم کنید.\n۴. روی «میکس و ساخت فایل» بزنید.\n۵. نتیجه را پخش یا در دانلودها ذخیره کنید.\n\nاگر فایل پس‌زمینه کوتاه‌تر باشد تا پایان فایل اصلی تکرار می‌شود.\nاگر طولانی‌تر باشد تا پایان فایل اصلی برش می‌خورد.\n\nاز دکمه «بازنشانی همه» برای شروع دوباره استفاده کنید.\n\nضبط صدا: می‌توانید صدا ضبط کنید و آن را به عنوان فایل اصلی استفاده کنید.\n\nبرنامه به جز بخش جستجوی افکت‌ها کاملاً آفلاین کار می‌کند.</string>
 </resources>
