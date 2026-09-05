@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -11,6 +10,56 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
+
+        <!-- ضبط صدا -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ضبط صدا"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
+
+            <Button
+                android:id="@+id/btnRecord"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/record_start"
+                android:contentDescription="دکمه شروع یا توقف ضبط صدا" />
+
+            <Button
+                android:id="@+id/btnDeleteRecord"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="@string/record_delete"
+                android:enabled="false"
+                android:contentDescription="حذف صدای ضبط شده" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnUseRecordAsMain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/record_use_as_main"
+            android:enabled="false"
+            android:layout_marginBottom="16dp"
+            android:contentDescription="استفاده از صدای ضبط شده به عنوان فایل اصلی" />
+
+        <TextView
+            android:id="@+id/tvRecordStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:contentDescription="وضعیت ضبط" />
 
         <!-- فایل اصلی -->
         <TextView
@@ -26,7 +75,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/select_main_file"
-            android:contentDescription="دکمه انتخاب فایل اصلی. برای انتخاب فایل صوتی اصلی از حافظه گوشی فشار دهید" />
+            android:contentDescription="دکمه انتخاب فایل اصلی از حافظه گوشی" />
 
         <TextView
             android:id="@+id/tvMainFile"
@@ -41,7 +90,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/main_volume"
-            android:contentDescription="اسلایدر تنظیم صدای فایل اصلی" />
+            android:contentDescription="اسلایدر صدای فایل اصلی" />
 
         <SeekBar
             android:id="@+id/seekMainVolume"
@@ -49,7 +98,7 @@
             android:layout_height="wrap_content"
             android:max="100"
             android:progress="100"
-            android:contentDescription="اسلایدر ولوم فایل اصلی. از صفر تا صد تنظیم کنید" />
+            android:contentDescription="اسلایدر ولوم فایل اصلی از صفر تا صد" />
 
         <TextView
             android:id="@+id/tvMainVolume"
@@ -72,7 +121,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/select_bg_file"
-            android:contentDescription="دکمه انتخاب فایل پس‌زمینه. برای انتخاب فایل صوتی پس‌زمینه از حافظه گوشی فشار دهید" />
+            android:contentDescription="دکمه انتخاب فایل پس‌زمینه از حافظه گوشی" />
 
         <TextView
             android:id="@+id/tvBgFile"
@@ -87,7 +136,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/bg_volume"
-            android:contentDescription="اسلایدر تنظیم صدای فایل پس‌زمینه" />
+            android:contentDescription="اسلایدر صدای فایل پس‌زمینه" />
 
         <SeekBar
             android:id="@+id/seekBgVolume"
@@ -95,7 +144,7 @@
             android:layout_height="wrap_content"
             android:max="100"
             android:progress="50"
-            android:contentDescription="اسلایدر ولوم فایل پس‌زمینه. از صفر تا صد تنظیم کنید" />
+            android:contentDescription="اسلایدر ولوم فایل پس‌زمینه از صفر تا صد" />
 
         <TextView
             android:id="@+id/tvBgVolume"
@@ -104,45 +153,21 @@
             android:text="۵۰٪"
             android:layout_marginBottom="24dp" />
 
-        <!-- فرمت خروجی -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/output_format"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <RadioGroup
-            android:id="@+id/rgFormat"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="24dp">
-
-            <RadioButton
-                android:id="@+id/rbMp3"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/format_mp3"
-                android:checked="true"
-                android:contentDescription="انتخاب فرمت خروجی MP3" />
-
-            <RadioButton
-                android:id="@+id/rbWav"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/format_wav"
-                android:layout_marginStart="24dp"
-                android:contentDescription="انتخاب فرمت خروجی WAV" />
-        </RadioGroup>
-
-        <!-- دکمه‌ها -->
+        <!-- دکمه‌های اصلی -->
         <Button
             android:id="@+id/btnMix"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/mix_create"
-            android:contentDescription="دکمه میکس و ساخت فایل. پس از انتخاب دو فایل و تنظیم ولوم، برای ساخت فایل میکس شده فشار دهید"
+            android:contentDescription="دکمه میکس و ساخت فایل. پس از انتخاب دو فایل فشار دهید"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnReset"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/reset"
+            android:contentDescription="دکمه بازنشانی. همه فایل‌های انتخاب شده پاک می‌شوند"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -150,7 +175,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/play_result"
-            android:contentDescription="دکمه پخش یا مکث نتیجه. برای پخش فایل ساخته شده فشار دهید. دوباره فشار دهید تا مکث شود"
+            android:contentDescription="دکمه پخش یا مکث نتیجه"
             android:enabled="false"
             android:layout_marginBottom="12dp" />
 
@@ -159,15 +184,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/save_to_downloads"
-            android:contentDescription="دکمه ذخیره در پوشه دانلودها. برای ذخیره فایل میکس شده در پوشه Downloads فشار دهید"
+            android:contentDescription="دکمه ذخیره در پوشه دانلودها"
             android:enabled="false" />
 
         <ProgressBar
             android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:visibility="gone"
             android:layout_marginTop="16dp"
+            android:max="100"
             android:contentDescription="نوار پیشرفت میکس" />
 
         <TextView
