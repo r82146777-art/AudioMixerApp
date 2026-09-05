@@ -91,7 +91,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل اصلی"
-            android:contentDescription="باز کردن تنظیمات فایل اصلی: صدا، سرعت، زیر و بمی، ورود و خروج"
+            android:contentDescription="باز کردن تنظیمات فایل اصلی: صدا، سرعت، زیر و بمی، اکو، ورود و خروج"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnEffects"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="افکت‌ها و جستجوی افکت"
+            android:contentDescription="باز کردن صفحه افکت‌ها و جستجوی افکت از اینترنت"
             android:layout_marginBottom="16dp" />
 
         <!-- فایل پس‌زمینه -->
@@ -124,7 +132,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل پس‌زمینه"
-            android:contentDescription="باز کردن تنظیمات فایل پس‌زمینه: صدا، سرعت، زیر و بمی، ورود و خروج"
+            android:contentDescription="باز کردن تنظیمات فایل پس‌زمینه: صدا، سرعت، زیر و بمی، اکو، ورود و خروج"
             android:layout_marginBottom="16dp" />
 
         <!-- فرمت خروجی -->
