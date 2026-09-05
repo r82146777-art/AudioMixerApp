@@ -8,20 +8,20 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="جستجوی افکت صوتی از اینترنت"
+        android:text="افکت‌های صوتی (فقط فایل‌ها)"
         android:textSize="16sp"
         android:textStyle="bold"
         android:layout_marginBottom="8dp"
-        android:contentDescription="عنوان صفحه جستجوی افکت" />
+        android:contentDescription="عنوان صفحه افکت‌ها" />
 
     <EditText
         android:id="@+id/etSearch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="نام افکت را بنویسید (مثلاً باد، باران، پاپ)"
+        android:hint="جستجو: باد، باران، رعد، دریا..."
         android:inputType="text"
         android:imeOptions="actionSearch"
-        android:contentDescription="کادر ویرایش برای جستجوی نام افکت صوتی" />
+        android:contentDescription="کادر جستجوی نام افکت" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -36,7 +36,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="جستجو"
-            android:contentDescription="دکمه جستجوی افکت در اینترنت" />
+            android:contentDescription="دکمه جستجوی افکت" />
 
         <Button
             android:id="@+id/btnAddLocal"
@@ -45,22 +45,22 @@
             android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:text="افزودن از گوشی"
-            android:contentDescription="افزودن فایل افکت از حافظه گوشی به برنامه" />
+            android:contentDescription="افزودن فایل افکت از گوشی" />
     </LinearLayout>
 
-    <ProgressBar
-        android:id="@+id/progressEffects"
-        style="?android:attr/progressBarStyleHorizontal"
+    <TextView
+        android:id="@+id/tvHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:contentDescription="نوار پیشرفت بارگذاری نتایج" />
+        android:textSize="13sp"
+        android:layout_marginBottom="8dp"
+        android:contentDescription="تعداد افکت‌ها" />
 
-    <WebView
-        android:id="@+id/webView"
+    <ListView
+        android:id="@+id/listEffects"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:contentDescription="نتایج جستجوی افکت‌های صوتی" />
+        android:contentDescription="لیست فایل‌های افکت" />
 
 </LinearLayout>
