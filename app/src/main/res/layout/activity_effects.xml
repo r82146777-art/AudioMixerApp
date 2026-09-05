@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="جستجوی افکت صوتی از اینترنت"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"
+        android:contentDescription="عنوان صفحه جستجوی افکت" />
+
+    <EditText
+        android:id="@+id/etSearch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="نام افکت را بنویسید (مثلاً باد، باران، پاپ)"
+        android:inputType="text"
+        android:imeOptions="actionSearch"
+        android:contentDescription="کادر ویرایش برای جستجوی نام افکت صوتی" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="جستجو"
+            android:contentDescription="دکمه جستجوی افکت در اینترنت" />
+
+        <Button
+            android:id="@+id/btnAddLocal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="افزودن از گوشی"
+            android:contentDescription="افزودن فایل افکت از حافظه گوشی به برنامه" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progressEffects"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:contentDescription="نوار پیشرفت بارگذاری نتایج" />
+
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:contentDescription="نتایج جستجوی افکت‌های صوتی" />
+
+</LinearLayout>
