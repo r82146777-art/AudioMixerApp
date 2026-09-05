@@ -49,13 +49,14 @@ class MainActivity : AppCompatActivity() {
     private var mainFileName: String? = null
     private var bgFileName: String? = null
 
-    // Per-file settings
     private var mainVolume = 1.0
     private var bgVolume = 0.5
     private var mainSpeed = 1.0
     private var bgSpeed = 1.0
     private var mainPitch = 1.0
     private var bgPitch = 1.0
+    private var mainEcho = 0.0
+    private var bgEcho = 0.0
     private var mainFade = false
     private var bgFade = false
 
@@ -135,17 +136,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_effects -> {
-                // Simple in-app note + open search (full engine needs API)
-                AlertDialog.Builder(this)
-                    .setTitle("جستجوی افکت")
-                    .setMessage("برای جستجوی افکت‌های صوتی، نام افکت را در کادر زیر وارد کنید یا از سایت Freesound استفاده کنید.\n\nدر نسخه‌های بعدی موتور جستجوی کامل داخل برنامه اضافه می‌شود.")
-                    .setPositiveButton("باز کردن Freesound") { _, _ ->
-                        try {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://freesound.org/search/?q=")))
-                        } catch (_: Exception) {}
-                    }
-                    .setNegativeButton("بستن", null)
-                    .show()
+                startActivity(Intent(this, EffectsActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -178,11 +169,10 @@ class MainActivity : AppCompatActivity() {
         binding.btnSelectMain.setOnClickListener { selectMainLauncher.launch(arrayOf("audio/*")) }
         binding.btnSelectBg.setOnClickListener { selectBgLauncher.launch(arrayOf("audio/*")) }
 
-        binding.btnMainSettings.setOnClickListener {
-            showFileSettingsDialog(true)
-        }
-        binding.btnBgSettings.setOnClickListener {
-            showFileSettingsDialog(false)
+        binding.btnMainSettings.setOnClickListener { showFileSettingsDialog(true) }
+        binding.btnBgSettings.setOnClickListener { showFileSettingsDialog(false) }
+        binding.btnEffects.setOnClickListener {
+            startActivity(Intent(this, EffectsActivity::class.java))
         }
 
         binding.btnMix.setOnClickListener {
@@ -208,8 +198,8 @@ class MainActivity : AppCompatActivity() {
             setPadding(48, 24, 48, 24)
         }
 
-        fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit): SeekBar {
-            val tv = TextView(this).apply { text = label; contentDescription = label }
+        fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit) {
+            val tv = TextView(this).apply { text = "$label: $progress"; contentDescription = label }
             layout.addView(tv)
             val seek = SeekBar(this).apply {
                 this.max = max
@@ -224,23 +214,27 @@ class MainActivity : AppCompatActivity() {
                 })
             }
             layout.addView(seek)
-            return seek
         }
 
         val vol = if (isMain) (mainVolume * 100).toInt() else (bgVolume * 100).toInt()
         val spd = if (isMain) (mainSpeed * 100).toInt() else (bgSpeed * 100).toInt()
         val pit = if (isMain) (mainPitch * 100).toInt() else (bgPitch * 100).toInt()
+        val echo = if (isMain) (mainEcho * 100).toInt() else (bgEcho * 100).toInt()
 
         addSeek("صدا (۰–۱۰۰)", 100, vol) { p ->
             if (isMain) mainVolume = p / 100.0 else bgVolume = p / 100.0
         }
         addSeek("سرعت (۵۰–۲۰۰٪)", 200, spd.coerceIn(50, 200)) { p ->
-            val v = (p.coerceIn(50, 200)) / 100.0
+            val v = p.coerceIn(50, 200) / 100.0
             if (isMain) mainSpeed = v else bgSpeed = v
         }
         addSeek("زیر و بمی (۵۰–۲۰۰٪)", 200, pit.coerceIn(50, 200)) { p ->
-            val v = (p.coerceIn(50, 200)) / 100.0
+            val v = p.coerceIn(50, 200) / 100.0
             if (isMain) mainPitch = v else bgPitch = v
+        }
+        addSeek("اکو (۰–۱۰۰)", 100, echo) { p ->
+            val v = p / 100.0
+            if (isMain) mainEcho = v else bgEcho = v
         }
 
         val fadeCheck = CheckBox(this).apply {
@@ -323,6 +317,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Build per-track filter chain: volume, speed, pitch, echo, fade */
+    private fun trackFilter(vol: Double, speed: Double, pitch: Double, echo: Double, fade: Boolean): String {
+        val parts = mutableListOf<String>()
+        parts.add("volume=$vol")
+        val tempo = speed.coerceIn(0.5, 2.0)
+        if (tempo != 1.0) parts.add("atempo=$tempo")
+        val p = pitch.coerceIn(0.5, 2.0)
+        if (p != 1.0) {
+            parts.add("asetrate=44100*$p")
+            parts.add("aresample=44100")
+            parts.add("atempo=${1.0 / p}")
+        }
+        if (echo > 0.01) {
+            // aecho: in_gain:out_gain:delays:decays
+            val g = (0.6 * echo).coerceIn(0.1, 0.9)
+            parts.add("aecho=0.8:$g:40|60|90:0.4|0.3|0.2")
+        }
+        if (fade) {
+            parts.add("afade=t=in:st=0:d=1.5")
+            parts.add("afade=t=out:st=0:d=1.5")
+        }
+        return parts.joinToString(",")
+    }
+
     private fun mixWithFFmpeg() {
         val main = mainUri ?: return
         val bg = bgUri ?: return
@@ -349,24 +367,11 @@ class MainActivity : AppCompatActivity() {
                     }
                     val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$ext")
 
-                    // Build filter: volume + speed (atempo) + optional fade
-                    fun buildFilter(vol: Double, speed: Double, pitch: Double, fade: Boolean, label: String): String {
-                        var f = "volume=$vol"
-                        // atempo accepts 0.5 to 2.0
-                        val tempo = speed.coerceIn(0.5, 2.0)
-                        if (tempo != 1.0) f += ",atempo=$tempo"
-                        // simple pitch via asetrate + atempo compensation (approximate)
-                        val p = pitch.coerceIn(0.5, 2.0)
-                        if (p != 1.0) {
-                            f += ",asetrate=44100*$p,aresample=44100,atempo=${1.0 / p}"
-                        }
-                        if (fade) f += ",afade=t=in:st=0:d=1,afade=t=out:st=0:d=1"
-                        return "[$label]$f[$label" + "f]"
-                    }
+                    val mainF = trackFilter(mainVolume, mainSpeed, mainPitch, mainEcho, mainFade)
+                    val bgF = trackFilter(bgVolume, bgSpeed, bgPitch, bgEcho, bgFade)
 
-                    // Simpler robust command: volume + loop bg to match main duration
-                    val filter = "[1:a]volume=${bgVolume},aloop=loop=-1:size=2e+09[bg];" +
-                            "[0:a]volume=${mainVolume}[main];" +
+                    val filter = "[0:a]$mainF[main];" +
+                            "[1:a]$bgF,aloop=loop=-1:size=2e+09[bg];" +
                             "[main][bg]amix=inputs=2:duration=first:dropout_transition=2[a]"
 
                     val codec = if (useWav) "-c:a pcm_s16le" else "-c:a aac -b:a 128k"
@@ -377,7 +382,7 @@ class MainActivity : AppCompatActivity() {
                     if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 500) {
                         outFile
                     } else {
-                        errorMsg = session.failStackTrace ?: session.allLogsAsString?.takeLast(300) ?: "خطای ناشناخته FFmpeg"
+                        errorMsg = session.allLogsAsString?.takeLast(400) ?: "خطای FFmpeg"
                         null
                     }
                 } catch (e: Exception) {
@@ -411,6 +416,7 @@ class MainActivity : AppCompatActivity() {
         mainVolume = 1.0; bgVolume = 0.5
         mainSpeed = 1.0; bgSpeed = 1.0
         mainPitch = 1.0; bgPitch = 1.0
+        mainEcho = 0.0; bgEcho = 0.0
         mainFade = false; bgFade = false
         binding.tvMainFile.text = getString(R.string.no_file_selected)
         binding.tvBgFile.text = getString(R.string.no_file_selected)
