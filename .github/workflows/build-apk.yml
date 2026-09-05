@@ -21,11 +21,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew || true
+      - name: Generate Gradle Wrapper
+        run: |
+          curl -sL https://services.gradle.org/distributions/gradle-8.2-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.2/bin/gradle wrapper --gradle-version 8.2
+          chmod +x ./gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
@@ -58,9 +59,9 @@ jobs:
             3. فایل را باز کنید و نصب کنید.
 
             ### قابلیت‌های این نسخه:
-            - انتخاب دو فایل صوتی (هر دو پایدار می‌مانند)
+            - انتخاب دو فایل صوتی (هر دو پایدار می‌مانند و پاک نمی‌شوند)
             - تنظیم ولوم هر فایل
-            - اگر فایل پس‌زمینه کوتاه‌تر باشد، تا پایان فایل اصلی تکرار می‌شود
+            - اگر فایل پس‌زمینه کوتاه‌تر باشد، تا پایان فایل اصلی تکرار (loop) می‌شود
             - اگر فایل پس‌زمینه طولانی‌تر باشد، تا پایان فایل اصلی برش می‌خورد
             - پشتیبانی از فایل‌های طولانی (۱۰ دقیقه، ۳۰ دقیقه، ۱ ساعت و بیشتر)
             - پخش نتیجه و ذخیره در Downloads
