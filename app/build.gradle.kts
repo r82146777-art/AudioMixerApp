@@ -11,13 +11,13 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
     }
 
@@ -44,6 +44,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -54,10 +57,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // FFmpeg for reliable long audio mixing (maintained fork)
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
+    // Full GPL for MP3 (libmp3lame) + all audio filters
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full-gpl:6.0.3")
 
-    // Keep old mixer as fallback if needed
+    // Stable Java mixer as primary/fallback
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
 
     testImplementation("junit:junit:4.13.2")
