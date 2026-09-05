@@ -34,8 +34,8 @@ class MainActivity : AppCompatActivity() {
 
     private var mainUri: Uri? = null
     private var bgUri: Uri? = null
-    private var mainPath: String? = null
-    private var bgPath: String? = null
+    private var mainFileName: String? = null
+    private var bgFileName: String? = null
 
     private var outputFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -54,10 +54,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {}
             mainUri = it
-            mainPath = copyUriToCache(it, "main_audio")
-            binding.tvMainFile.text = getFileName(it) ?: getString(R.string.no_file_selected)
+            mainFileName = getFileName(it)
+            binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
             binding.tvMainFile.contentDescription = "فایل اصلی انتخاب شده: ${binding.tvMainFile.text}"
         }
     }
@@ -66,10 +68,12 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try {
+                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) {}
             bgUri = it
-            bgPath = copyUriToCache(it, "bg_audio")
-            binding.tvBgFile.text = getFileName(it) ?: getString(R.string.no_file_selected)
+            bgFileName = getFileName(it)
+            binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
             binding.tvBgFile.contentDescription = "فایل پس‌زمینه انتخاب شده: ${binding.tvBgFile.text}"
         }
     }
@@ -79,9 +83,33 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Restore previous selections after activity recreate (document picker often causes this)
+        if (savedInstanceState != null) {
+            mainUri = savedInstanceState.getParcelable("mainUri")
+            bgUri = savedInstanceState.getParcelable("bgUri")
+            mainFileName = savedInstanceState.getString("mainFileName")
+            bgFileName = savedInstanceState.getString("bgFileName")
+            if (mainUri != null) {
+                binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
+                binding.tvMainFile.contentDescription = "فایل اصلی انتخاب شده: ${binding.tvMainFile.text}"
+            }
+            if (bgUri != null) {
+                binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
+                binding.tvBgFile.contentDescription = "فایل پس‌زمینه انتخاب شده: ${binding.tvBgFile.text}"
+            }
+        }
+
         checkPermissions()
         setupSeekBars()
         setupButtons()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putParcelable("mainUri", mainUri)
+        outState.putParcelable("bgUri", bgUri)
+        outState.putString("mainFileName", mainFileName)
+        outState.putString("bgFileName", bgFileName)
     }
 
     private fun checkPermissions() {
@@ -134,7 +162,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnMix.setOnClickListener {
-            if (mainPath == null || bgPath == null) {
+            if (mainUri == null || bgUri == null) {
                 Toast.makeText(this, getString(R.string.select_both_files), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -152,61 +180,63 @@ class MainActivity : AppCompatActivity() {
 
     private fun getFileName(uri: Uri): String? {
         var name: String? = null
-        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (cursor.moveToFirst() && nameIndex >= 0) {
-                name = cursor.getString(nameIndex)
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex >= 0) {
+                    name = cursor.getString(nameIndex)
+                }
             }
-        }
+        } catch (_: Exception) {}
         return name
     }
 
-    private fun copyUriToCache(uri: Uri, prefix: String): String? {
-        return try {
-            val inputStream = contentResolver.openInputStream(uri) ?: return null
-            val ext = getFileName(uri)?.substringAfterLast('.', "mp3") ?: "mp3"
-            val file = File(cacheDir, "${prefix}_${System.currentTimeMillis()}.$ext")
-            FileOutputStream(file).use { output ->
-                inputStream.copyTo(output)
-            }
-            inputStream.close()
-            file.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
     private fun mixAudio() {
+        val main = mainUri ?: return
+        val bg = bgUri ?: return
+
         binding.progressBar.visibility = View.VISIBLE
         binding.tvStatus.text = getString(R.string.mixing)
         binding.btnMix.isEnabled = false
 
         val mainVol = binding.seekMainVolume.progress / 100f
         val bgVol = binding.seekBgVolume.progress / 100f
-        // Library always outputs AAC in MP4 container
-        val extension = "m4a"
 
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$extension")
+                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
                     val mixer = AudioMixer(outFile.absolutePath)
 
-                    val input1 = GeneralAudioInput(mainPath!!)
-                    input1.setVolume(mainVol)
+                    // Use Uri directly (better for long files, no full copy to cache)
+                    val inputMain = GeneralAudioInput(this@MainActivity, main, null)
+                    inputMain.setVolume(mainVol)
 
-                    val input2 = GeneralAudioInput(bgPath!!)
-                    input2.setVolume(bgVol)
+                    val inputBg = GeneralAudioInput(this@MainActivity, bg, null)
+                    inputBg.setVolume(bgVol)
 
-                    mixer.addDataSource(input1)
-                    mixer.addDataSource(input2)
+                    // Make main the primary track (output length = main length)
+                    // If bg is shorter → loop it until main ends
+                    // If bg is longer → cut it to main length
+                    val mainDuration = inputMain.durationUs
+                    val bgDuration = inputBg.durationUs
+
+                    if (bgDuration > mainDuration && mainDuration > 0) {
+                        // Cut longer background to match main
+                        inputBg.setEndTimeUs(mainDuration)
+                    }
+
+                    // Enable looping so shorter track(s) repeat to fill the longer one
+                    mixer.setLoopingEnabled(true)
+
+                    mixer.addDataSource(inputMain)
+                    mixer.addDataSource(inputBg)
                     mixer.setSampleRate(44100)
                     mixer.setBitRate(128000)
                     mixer.setChannelCount(2)
 
                     mixer.start()
-                    mixer.processSync()  // synchronous processing
+                    mixer.processSync()
 
                     outFile
                 } catch (e: Exception) {
