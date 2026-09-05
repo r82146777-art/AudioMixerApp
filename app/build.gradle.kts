@@ -11,10 +11,14 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
     }
 
     buildTypes {
@@ -36,6 +40,11 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
@@ -45,7 +54,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // Audio Mixer library
+    // FFmpeg for reliable long audio mixing (maintained fork)
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
+
+    // Keep old mixer as fallback if needed
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
 
     testImplementation("junit:junit:4.13.2")
