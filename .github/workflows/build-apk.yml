@@ -21,25 +21,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      - name: Grant execute permission for gradlew (if exists)
-        run: |
-          if [ -f ./gradlew ]; then chmod +x ./gradlew; fi
-
-      - name: Generate Gradle Wrapper
-        run: |
-          gradle wrapper --gradle-version 8.2 || true
-          if [ ! -f ./gradlew ]; then
-            curl -sL https://services.gradle.org/distributions/gradle-8.2-bin.zip -o /tmp/gradle.zip
-            unzip -q /tmp/gradle.zip -d /tmp
-            /tmp/gradle-8.2/bin/gradle wrapper --gradle-version 8.2
-          fi
-          chmod +x ./gradlew
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew || true
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --info
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: List APK
         run: find app/build/outputs -name "*.apk" || true
@@ -59,7 +48,7 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: میکسر صوتی - نسخه v1.0.${{ github.run_number }}
           body: |
-            ## اپلیکیشن میکس صوتی آماده دانلود و نصب
+            ## اپلیکیشن میکس صوتی آماده دانلود و نصب (نسخه اصلاح‌شده)
 
             **فایل APK را دانلود کنید و نصب کنید.**
 
@@ -68,15 +57,15 @@ jobs:
             2. در تنظیمات گوشی، «نصب از منابع ناشناس» یا «Allow from this source» را فعال کنید.
             3. فایل را باز کنید و نصب کنید.
 
-            ### قابلیت‌ها:
-            - انتخاب دو فایل صوتی
+            ### قابلیت‌های این نسخه:
+            - انتخاب دو فایل صوتی (هر دو پایدار می‌مانند)
             - تنظیم ولوم هر فایل
-            - میکس و ذخیره به صورت MP3/WAV
-            - پخش نتیجه
-            - ذخیره در Downloads
+            - اگر فایل پس‌زمینه کوتاه‌تر باشد، تا پایان فایل اصلی تکرار می‌شود
+            - اگر فایل پس‌زمینه طولانی‌تر باشد، تا پایان فایل اصلی برش می‌خورد
+            - پشتیبانی از فایل‌های طولانی (۱۰ دقیقه، ۳۰ دقیقه، ۱ ساعت و بیشتر)
+            - پخش نتیجه و ذخیره در Downloads
             - پشتیبانی کامل TalkBack
-          files: |
-            app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
         env:
