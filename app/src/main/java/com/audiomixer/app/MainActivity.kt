@@ -30,12 +30,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.ReturnCode
 import com.audiomixer.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zeroonezero.android.audio_mixer.AudioMixer
+import zeroonezero.android.audio_mixer.input.GeneralAudioInput
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -50,16 +51,8 @@ class MainActivity : AppCompatActivity() {
     private var mainFileName: String? = null
     private var bgFileName: String? = null
 
-    private var mainVolume = 1.0
-    private var bgVolume = 0.5
-    private var mainSpeed = 1.0
-    private var bgSpeed = 1.0
-    private var mainPitch = 1.0
-    private var bgPitch = 1.0
-    private var mainEcho = 0.0
-    private var bgEcho = 0.0
-    private var mainFade = false
-    private var bgFade = false
+    private var mainVolume = 1.0f
+    private var bgVolume = 0.5f
 
     private var outputFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -85,7 +78,6 @@ class MainActivity : AppCompatActivity() {
             mainUri = it
             mainFileName = getFileName(it)
             binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
-            binding.tvMainFile.contentDescription = "فایل اصلی: ${binding.tvMainFile.text}"
         }
     }
 
@@ -97,7 +89,6 @@ class MainActivity : AppCompatActivity() {
             bgUri = it
             bgFileName = getFileName(it)
             binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
-            binding.tvBgFile.contentDescription = "فایل پس‌زمینه: ${binding.tvBgFile.text}"
         }
     }
 
@@ -128,18 +119,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_guide -> {
-                showTextDialog(getString(R.string.menu_guide), getString(R.string.guide_text))
-                true
-            }
-            R.id.menu_about -> {
-                showAboutDialog()
-                true
-            }
-            R.id.menu_effects -> {
-                startActivity(Intent(this, EffectsActivity::class.java))
-                true
-            }
+            R.id.menu_guide -> { showTextDialog(getString(R.string.menu_guide), getString(R.string.guide_text)); true }
+            R.id.menu_about -> { showAboutDialog(); true }
+            R.id.menu_effects -> { startActivity(Intent(this, EffectsActivity::class.java)); true }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -169,17 +151,15 @@ class MainActivity : AppCompatActivity() {
     private fun setupButtons() {
         binding.btnSelectMain.setOnClickListener { selectMainLauncher.launch(arrayOf("audio/*")) }
         binding.btnSelectBg.setOnClickListener { selectBgLauncher.launch(arrayOf("audio/*")) }
-        binding.btnMainSettings.setOnClickListener { showFileSettingsDialog(true) }
-        binding.btnBgSettings.setOnClickListener { showFileSettingsDialog(false) }
-        binding.btnEffects.setOnClickListener {
-            startActivity(Intent(this, EffectsActivity::class.java))
-        }
+        binding.btnMainSettings.setOnClickListener { showVolumeDialog(true) }
+        binding.btnBgSettings.setOnClickListener { showVolumeDialog(false) }
+        binding.btnEffects.setOnClickListener { startActivity(Intent(this, EffectsActivity::class.java)) }
         binding.btnMix.setOnClickListener {
             if (mainUri == null || bgUri == null) {
                 Toast.makeText(this, getString(R.string.select_both_files), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            mixWithFFmpeg()
+            doMix()
         }
         binding.btnReset.setOnClickListener { resetAll() }
         binding.btnPlay.setOnClickListener { togglePlay() }
@@ -189,52 +169,29 @@ class MainActivity : AppCompatActivity() {
         binding.btnUseRecordAsMain.setOnClickListener { useRecordAsMain() }
     }
 
-    private fun showFileSettingsDialog(isMain: Boolean) {
+    private fun showVolumeDialog(isMain: Boolean) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 24)
         }
-        fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit) {
-            val tv = TextView(this).apply { text = "$label: $progress"; contentDescription = label }
-            layout.addView(tv)
-            layout.addView(SeekBar(this).apply {
-                this.max = max
-                this.progress = progress
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                        tv.text = "$label: $p"
-                        onChange(p)
-                    }
-                    override fun onStartTrackingTouch(s: SeekBar?) {}
-                    override fun onStopTrackingTouch(s: SeekBar?) {}
-                })
+        val tv = TextView(this).apply {
+            text = "صدا: ${((if (isMain) mainVolume else bgVolume) * 100).toInt()}"
+        }
+        layout.addView(tv)
+        layout.addView(SeekBar(this).apply {
+            max = 100
+            progress = ((if (isMain) mainVolume else bgVolume) * 100).toInt()
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                    tv.text = "صدا: $p"
+                    if (isMain) mainVolume = p / 100f else bgVolume = p / 100f
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {}
             })
-        }
-        val vol = if (isMain) (mainVolume * 100).toInt() else (bgVolume * 100).toInt()
-        val spd = if (isMain) (mainSpeed * 100).toInt() else (bgSpeed * 100).toInt()
-        val pit = if (isMain) (mainPitch * 100).toInt() else (bgPitch * 100).toInt()
-        val echo = if (isMain) (mainEcho * 100).toInt() else (bgEcho * 100).toInt()
-        addSeek("صدا (۰–۱۰۰)", 100, vol) { p -> if (isMain) mainVolume = p / 100.0 else bgVolume = p / 100.0 }
-        addSeek("سرعت (۵۰–۲۰۰٪)", 200, spd.coerceIn(50, 200)) { p ->
-            val v = p.coerceIn(50, 200) / 100.0
-            if (isMain) mainSpeed = v else bgSpeed = v
-        }
-        addSeek("زیر و بمی (۵۰–۲۰۰٪)", 200, pit.coerceIn(50, 200)) { p ->
-            val v = p.coerceIn(50, 200) / 100.0
-            if (isMain) mainPitch = v else bgPitch = v
-        }
-        addSeek("اکو (۰–۱۰۰)", 100, echo) { p ->
-            val v = p / 100.0
-            if (isMain) mainEcho = v else bgEcho = v
-        }
-        layout.addView(CheckBox(this).apply {
-            text = "ورود و خروج نرم"
-            isChecked = if (isMain) mainFade else bgFade
-            contentDescription = "تیک ورود و خروج نرم صوت"
-            setOnCheckedChangeListener { _, c -> if (isMain) mainFade = c else bgFade = c }
         })
         AlertDialog.Builder(this)
-            .setTitle(if (isMain) "تنظیمات فایل اصلی" else "تنظیمات فایل پس‌زمینه")
+            .setTitle(if (isMain) "صدای فایل اصلی" else "صدای فایل پس‌زمینه")
             .setView(layout)
             .setPositiveButton("تأیید", null)
             .show()
@@ -242,10 +199,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showInviteIfNeeded() {
         if (prefs.getBoolean("dont_show_invite", false)) return
-        val checkBox = CheckBox(this).apply {
-            text = getString(R.string.invite_dont_show)
-            contentDescription = "دیگر این پیام را نشان نده"
-        }
+        val checkBox = CheckBox(this).apply { text = getString(R.string.invite_dont_show) }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.invite_title))
             .setMessage(getString(R.string.invite_message))
@@ -289,10 +243,10 @@ class MainActivity : AppCompatActivity() {
         return name
     }
 
-    private fun copyUriToTemp(uri: Uri, name: String): File? {
+    private fun copyUriToTemp(uri: Uri, prefix: String): File? {
         return try {
             val input = contentResolver.openInputStream(uri) ?: return null
-            val file = File(cacheDir, name)
+            val file = File(cacheDir, "${prefix}_${System.currentTimeMillis()}.tmp")
             FileOutputStream(file).use { out -> input.copyTo(out) }
             input.close()
             file
@@ -302,7 +256,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun mixWithFFmpeg() {
+    /** Root-stable mix: 1) Java mixer first  2) FFmpeg with argument array (no crash from quotes) */
+    private fun doMix() {
         val main = mainUri ?: return
         val bg = bgUri ?: return
 
@@ -311,85 +266,78 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text = getString(R.string.mixing)
         binding.btnMix.isEnabled = false
 
-        val useWav = binding.rbWav.isChecked
-        val ext = if (useWav) "wav" else "m4a"
-        val mv = mainVolume
-        val bv = bgVolume
+        val format = when {
+            binding.rbWav.isChecked -> "wav"
+            binding.rbM4a.isChecked -> "m4a"
+            else -> "mp3"
+        }
 
         lifecycleScope.launch {
             var errorMsg = ""
             val result = withContext(Dispatchers.IO) {
+                // --- Method 1: android_audio_mixer (stable, no native crash) ---
                 try {
-                    // Prefer SAF (no full copy) — fallback to temp copy
-                    var mainPath: String? = null
-                    var bgPath: String? = null
-                    try {
-                        mainPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, main)
-                        bgPath = FFmpegKitConfig.getSafParameterForRead(this@MainActivity, bg)
-                    } catch (_: Exception) {}
-
-                    if (mainPath.isNullOrBlank() || bgPath.isNullOrBlank()) {
-                        val mf = copyUriToTemp(main, "main_${System.currentTimeMillis()}.tmp")
-                        val bf = copyUriToTemp(bg, "bg_${System.currentTimeMillis()}.tmp")
-                        if (mf == null || bf == null) {
-                            errorMsg = "خواندن فایل‌ها ناموفق بود"
-                            return@withContext null
-                        }
-                        mainPath = mf.absolutePath
-                        bgPath = bf.absolutePath
-                    }
-
-                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$ext")
-
-                    // SIMPLE reliable mix: loop bg to match main length, apply volumes only
-                    // Advanced filters (speed/pitch/echo) applied only if changed from default
-                    val mainParts = mutableListOf("volume=$mv")
-                    val bgParts = mutableListOf("volume=$bv")
-
-                    if (mainSpeed != 1.0) mainParts.add("atempo=${mainSpeed.coerceIn(0.5, 2.0)}")
-                    if (bgSpeed != 1.0) bgParts.add("atempo=${bgSpeed.coerceIn(0.5, 2.0)}")
-                    if (mainEcho > 0.05) mainParts.add("aecho=0.8:0.5:60:0.4")
-                    if (bgEcho > 0.05) bgParts.add("aecho=0.8:0.5:60:0.4")
-                    if (mainFade) {
-                        mainParts.add("afade=t=in:st=0:d=1")
-                        mainParts.add("afade=t=out:st=0:d=1")
-                    }
-                    if (bgFade) {
-                        bgParts.add("afade=t=in:st=0:d=1")
-                        bgParts.add("afade=t=out:st=0:d=1")
-                    }
-
-                    val mainF = mainParts.joinToString(",")
-                    val bgF = bgParts.joinToString(",")
-
-                    // stream_loop on bg input is more reliable than aloop filter
-                    val codec = if (useWav) "-c:a pcm_s16le" else "-c:a aac -b:a 128k"
-                    val cmd = "-y -i \"$mainPath\" -stream_loop -1 -i \"$bgPath\" " +
-                            "-filter_complex \"[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]\" " +
-                            "-map \"[a]\" $codec -shortest \"${outFile.absolutePath}\""
-
-                    val session = FFmpegKit.execute(cmd)
-                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 500) {
-                        outFile
-                    } else {
-                        // Fallback: even simpler command without extra filters
-                        val simpleCmd = "-y -i \"$mainPath\" -stream_loop -1 -i \"$bgPath\" " +
-                                "-filter_complex \"[0:a]volume=$mv[a0];[1:a]volume=$bv[a1];[a0][a1]amix=inputs=2:duration=first[a]\" " +
-                                "-map \"[a]\" $codec -shortest \"${outFile.absolutePath}\""
-                        val session2 = FFmpegKit.execute(simpleCmd)
-                        if (ReturnCode.isSuccess(session2.returnCode) && outFile.exists() && outFile.length() > 500) {
-                            outFile
-                        } else {
-                            errorMsg = (session2.allLogsAsString ?: session.allLogsAsString)?.takeLast(350)
-                                ?: "میکس ناموفق بود"
-                            null
-                        }
+                    val outM4a = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
+                    val mixer = AudioMixer(outM4a.absolutePath)
+                    val in1 = GeneralAudioInput(this@MainActivity, main, null)
+                    in1.setVolume(mainVolume)
+                    val in2 = GeneralAudioInput(this@MainActivity, bg, null)
+                    in2.setVolume(bgVolume)
+                    val d1 = in1.durationUs
+                    val d2 = in2.durationUs
+                    if (d2 > d1 && d1 > 0) in2.setEndTimeUs(d1)
+                    mixer.setLoopingEnabled(true)
+                    mixer.addDataSource(in1)
+                    mixer.addDataSource(in2)
+                    mixer.setSampleRate(44100)
+                    mixer.setBitRate(128000)
+                    mixer.setChannelCount(2)
+                    mixer.start()
+                    mixer.processSync()
+                    if (outM4a.exists() && outM4a.length() > 500) {
+                        // Convert to requested format if needed
+                        if (format == "m4a") return@withContext outM4a
+                        val converted = convertWithFFmpeg(outM4a, format)
+                        if (converted != null) return@withContext converted
+                        return@withContext outM4a // fallback keep m4a
                     }
                 } catch (e: Exception) {
-                    errorMsg = e.message ?: "خطای داخلی"
+                    errorMsg = "میکسر داخلی: ${e.message}"
                     e.printStackTrace()
-                    null
                 }
+
+                // --- Method 2: FFmpeg with safe argument array ---
+                try {
+                    val mainFile = copyUriToTemp(main, "main") ?: return@withContext null
+                    val bgFile = copyUriToTemp(bg, "bg") ?: return@withContext null
+                    val outFile = File(cacheDir, "mixed_ff_${System.currentTimeMillis()}.$format")
+
+                    val codecArgs = when (format) {
+                        "wav" -> arrayOf("-c:a", "pcm_s16le")
+                        "mp3" -> arrayOf("-c:a", "libmp3lame", "-b:a", "128k")
+                        else -> arrayOf("-c:a", "aac", "-b:a", "128k")
+                    }
+
+                    val args = arrayOf(
+                        "-y",
+                        "-i", mainFile.absolutePath,
+                        "-stream_loop", "-1",
+                        "-i", bgFile.absolutePath,
+                        "-filter_complex",
+                        "[0:a]volume=$mainVolume[a0];[1:a]volume=$bgVolume[a1];[a0][a1]amix=inputs=2:duration=first[a]",
+                        "-map", "[a]"
+                    ) + codecArgs + arrayOf("-shortest", outFile.absolutePath)
+
+                    val session = FFmpegKit.executeWithArguments(args)
+                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 500) {
+                        return@withContext outFile
+                    }
+                    errorMsg = (session.allLogsAsString ?: "").takeLast(300).ifEmpty { "FFmpeg ناموفق" }
+                } catch (e: Exception) {
+                    errorMsg = (errorMsg + " | FFmpeg: ${e.message}").trim()
+                    e.printStackTrace()
+                }
+                null
             }
 
             binding.progressBar.visibility = View.GONE
@@ -403,8 +351,24 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.mix_success), Toast.LENGTH_SHORT).show()
             } else {
                 binding.tvStatus.text = getString(R.string.mix_failed)
-                Toast.makeText(this@MainActivity, "خطا در میکس:\n$errorMsg", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "خطا: ${errorMsg.ifEmpty { "میکس ناموفق" }}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    private fun convertWithFFmpeg(input: File, format: String): File? {
+        return try {
+            val out = File(cacheDir, "conv_${System.currentTimeMillis()}.$format")
+            val codecArgs = when (format) {
+                "wav" -> arrayOf("-c:a", "pcm_s16le")
+                "mp3" -> arrayOf("-c:a", "libmp3lame", "-b:a", "128k")
+                else -> return input
+            }
+            val args = arrayOf("-y", "-i", input.absolutePath) + codecArgs + arrayOf(out.absolutePath)
+            val session = FFmpegKit.executeWithArguments(args)
+            if (ReturnCode.isSuccess(session.returnCode) && out.exists() && out.length() > 500) out else null
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -413,11 +377,7 @@ class MainActivity : AppCompatActivity() {
         mainFileName = null; bgFileName = null
         outputFile = null
         mediaPlayer?.release(); mediaPlayer = null; isPlaying = false
-        mainVolume = 1.0; bgVolume = 0.5
-        mainSpeed = 1.0; bgSpeed = 1.0
-        mainPitch = 1.0; bgPitch = 1.0
-        mainEcho = 0.0; bgEcho = 0.0
-        mainFade = false; bgFade = false
+        mainVolume = 1f; bgVolume = 0.5f
         binding.tvMainFile.text = getString(R.string.no_file_selected)
         binding.tvBgFile.text = getString(R.string.no_file_selected)
         binding.btnPlay.isEnabled = false
@@ -453,7 +413,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvRecordStatus.text = getString(R.string.recording)
             binding.btnDeleteRecord.isEnabled = false
             binding.btnUseRecordAsMain.isEnabled = false
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             Toast.makeText(this, "خطا در شروع ضبط", Toast.LENGTH_SHORT).show()
         }
     }
@@ -468,7 +428,6 @@ class MainActivity : AppCompatActivity() {
             binding.tvRecordStatus.text = getString(R.string.record_saved)
             binding.btnDeleteRecord.isEnabled = true
             binding.btnUseRecordAsMain.isEnabled = true
-            Toast.makeText(this, getString(R.string.record_saved), Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {}
     }
 
@@ -478,7 +437,6 @@ class MainActivity : AppCompatActivity() {
         binding.btnDeleteRecord.isEnabled = false
         binding.btnUseRecordAsMain.isEnabled = false
         binding.tvRecordStatus.text = ""
-        Toast.makeText(this, "ضبط حذف شد", Toast.LENGTH_SHORT).show()
     }
 
     private fun useRecordAsMain() {
@@ -510,7 +468,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 isPlaying = true
                 binding.btnPlay.text = getString(R.string.pause_result)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 Toast.makeText(this, "خطا در پخش", Toast.LENGTH_SHORT).show()
             }
         }
@@ -519,7 +477,11 @@ class MainActivity : AppCompatActivity() {
     private fun saveToDownloads() {
         val file = outputFile ?: return
         val ext = file.extension.ifEmpty { "m4a" }
-        val mime = if (ext == "wav") "audio/wav" else "audio/mp4"
+        val mime = when (ext) {
+            "wav" -> "audio/wav"
+            "mp3" -> "audio/mpeg"
+            else -> "audio/mp4"
+        }
         val displayName = "mixed_audio_${System.currentTimeMillis()}.$ext"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -542,8 +504,9 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 if (!downloads.exists()) downloads.mkdirs()
-                val dest = File(downloads, displayName)
-                FileInputStream(file).use { input -> FileOutputStream(dest).use { output -> input.copyTo(output) } }
+                FileInputStream(file).use { input ->
+                    FileOutputStream(File(downloads, displayName)).use { output -> input.copyTo(output) }
+                }
             }
             Toast.makeText(this, getString(R.string.saved_success), Toast.LENGTH_LONG).show()
             binding.tvStatus.text = getString(R.string.saved_success)
