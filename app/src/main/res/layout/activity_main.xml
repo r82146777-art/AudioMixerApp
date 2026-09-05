@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- فایل اصلی -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="فایل اصلی (صدا یا موسیقی اصلی)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnSelectMain"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/select_main_file"
+            android:contentDescription="دکمه انتخاب فایل اصلی. برای انتخاب فایل صوتی اصلی از حافظه گوشی فشار دهید" />
+
+        <TextView
+            android:id="@+id/tvMainFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/no_file_selected"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="نام فایل اصلی انتخاب شده" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/main_volume"
+            android:contentDescription="اسلایدر تنظیم صدای فایل اصلی" />
+
+        <SeekBar
+            android:id="@+id/seekMainVolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="100"
+            android:contentDescription="اسلایدر ولوم فایل اصلی. از صفر تا صد تنظیم کنید" />
+
+        <TextView
+            android:id="@+id/tvMainVolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="۱۰۰٪"
+            android:layout_marginBottom="24dp" />
+
+        <!-- فایل پس‌زمینه -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="فایل پس‌زمینه (موسیقی یا صدای پس‌زمینه)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnSelectBg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/select_bg_file"
+            android:contentDescription="دکمه انتخاب فایل پس‌زمینه. برای انتخاب فایل صوتی پس‌زمینه از حافظه گوشی فشار دهید" />
+
+        <TextView
+            android:id="@+id/tvBgFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/no_file_selected"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="نام فایل پس‌زمینه انتخاب شده" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/bg_volume"
+            android:contentDescription="اسلایدر تنظیم صدای فایل پس‌زمینه" />
+
+        <SeekBar
+            android:id="@+id/seekBgVolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="50"
+            android:contentDescription="اسلایدر ولوم فایل پس‌زمینه. از صفر تا صد تنظیم کنید" />
+
+        <TextView
+            android:id="@+id/tvBgVolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="۵۰٪"
+            android:layout_marginBottom="24dp" />
+
+        <!-- فرمت خروجی -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/output_format"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <RadioGroup
+            android:id="@+id/rgFormat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="24dp">
+
+            <RadioButton
+                android:id="@+id/rbMp3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/format_mp3"
+                android:checked="true"
+                android:contentDescription="انتخاب فرمت خروجی MP3" />
+
+            <RadioButton
+                android:id="@+id/rbWav"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/format_wav"
+                android:layout_marginStart="24dp"
+                android:contentDescription="انتخاب فرمت خروجی WAV" />
+        </RadioGroup>
+
+        <!-- دکمه‌ها -->
+        <Button
+            android:id="@+id/btnMix"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/mix_create"
+            android:contentDescription="دکمه میکس و ساخت فایل. پس از انتخاب دو فایل و تنظیم ولوم، برای ساخت فایل میکس شده فشار دهید"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnPlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/play_result"
+            android:contentDescription="دکمه پخش یا مکث نتیجه. برای پخش فایل ساخته شده فشار دهید. دوباره فشار دهید تا مکث شود"
+            android:enabled="false"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/save_to_downloads"
+            android:contentDescription="دکمه ذخیره در پوشه دانلودها. برای ذخیره فایل میکس شده در پوشه Downloads فشار دهید"
+            android:enabled="false" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_marginTop="16dp"
+            android:contentDescription="نوار پیشرفت میکس" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:contentDescription="وضعیت عملیات" />
+
+    </LinearLayout>
+</ScrollView>

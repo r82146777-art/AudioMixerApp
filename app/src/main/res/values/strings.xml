@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">میکسر صوتی</string>
+    <string name="select_main_file">انتخاب فایل اصلی</string>
+    <string name="select_bg_file">انتخاب فایل پس‌زمینه</string>
+    <string name="main_volume">صدای فایل اصلی</string>
+    <string name="bg_volume">صدای فایل پس‌زمینه</string>
+    <string name="output_format">فرمت خروجی</string>
+    <string name="format_mp3">MP3</string>
+    <string name="format_wav">WAV</string>
+    <string name="mix_create">میکس و ساخت فایل</string>
+    <string name="play_result">پخش نتیجه</string>
+    <string name="pause_result">مکث</string>
+    <string name="save_to_downloads">ذخیره در دانلودها</string>
+    <string name="no_file_selected">هیچ فایلی انتخاب نشده</string>
+    <string name="mixing">در حال میکس...</string>
+    <string name="mix_success">میکس با موفقیت انجام شد</string>
+    <string name="mix_failed">خطا در میکس فایل‌ها</string>
+    <string name="permission_needed">دسترسی به فایل‌ها لازم است</string>
+    <string name="saved_success">فایل در پوشه دانلودها ذخیره شد</string>
+    <string name="select_both_files">لطفاً هر دو فایل را انتخاب کنید</string>
+</resources>
