@@ -83,29 +83,16 @@
             android:layout_height="wrap_content"
             android:text="@string/no_file_selected"
             android:layout_marginTop="4dp"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="8dp"
             android:contentDescription="نام فایل اصلی انتخاب شده" />
 
-        <TextView
+        <Button
+            android:id="@+id/btnMainSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/main_volume"
-            android:contentDescription="اسلایدر صدای فایل اصلی" />
-
-        <SeekBar
-            android:id="@+id/seekMainVolume"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:max="100"
-            android:progress="100"
-            android:contentDescription="اسلایدر ولوم فایل اصلی از صفر تا صد" />
-
-        <TextView
-            android:id="@+id/tvMainVolume"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="۱۰۰٪"
-            android:layout_marginBottom="24dp" />
+            android:text="تنظیمات فایل اصلی"
+            android:contentDescription="باز کردن تنظیمات فایل اصلی: صدا، سرعت، زیر و بمی، ورود و خروج"
+            android:layout_marginBottom="16dp" />
 
         <!-- فایل پس‌زمینه -->
         <TextView
@@ -129,29 +116,48 @@
             android:layout_height="wrap_content"
             android:text="@string/no_file_selected"
             android:layout_marginTop="4dp"
-            android:layout_marginBottom="12dp"
+            android:layout_marginBottom="8dp"
             android:contentDescription="نام فایل پس‌زمینه انتخاب شده" />
 
+        <Button
+            android:id="@+id/btnBgSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تنظیمات فایل پس‌زمینه"
+            android:contentDescription="باز کردن تنظیمات فایل پس‌زمینه: صدا، سرعت، زیر و بمی، ورود و خروج"
+            android:layout_marginBottom="16dp" />
+
+        <!-- فرمت خروجی -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/bg_volume"
-            android:contentDescription="اسلایدر صدای فایل پس‌زمینه" />
+            android:text="@string/output_format"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
 
-        <SeekBar
-            android:id="@+id/seekBgVolume"
+        <RadioGroup
+            android:id="@+id/rgFormat"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="100"
-            android:progress="50"
-            android:contentDescription="اسلایدر ولوم فایل پس‌زمینه از صفر تا صد" />
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
 
-        <TextView
-            android:id="@+id/tvBgVolume"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="۵۰٪"
-            android:layout_marginBottom="24dp" />
+            <RadioButton
+                android:id="@+id/rbMp3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="M4A / AAC"
+                android:checked="true"
+                android:contentDescription="انتخاب فرمت خروجی M4A" />
+
+            <RadioButton
+                android:id="@+id/rbWav"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WAV"
+                android:layout_marginStart="24dp"
+                android:contentDescription="انتخاب فرمت خروجی WAV" />
+        </RadioGroup>
 
         <!-- دکمه‌های اصلی -->
         <Button
@@ -159,7 +165,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/mix_create"
-            android:contentDescription="دکمه میکس و ساخت فایل. پس از انتخاب دو فایل فشار دهید"
+            android:contentDescription="دکمه میکس و ساخت فایل"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -167,7 +173,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/reset"
-            android:contentDescription="دکمه بازنشانی. همه فایل‌های انتخاب شده پاک می‌شوند"
+            android:contentDescription="دکمه بازنشانی همه انتخاب‌ها"
             android:layout_marginBottom="12dp" />
 
         <Button
