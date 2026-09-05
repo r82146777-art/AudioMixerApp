@@ -11,7 +11,6 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- ضبط صدا -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -61,11 +60,10 @@
             android:layout_marginBottom="16dp"
             android:contentDescription="وضعیت ضبط" />
 
-        <!-- فایل اصلی -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="فایل اصلی (صدا یا موسیقی اصلی)"
+            android:text="فایل اصلی"
             android:textSize="16sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -75,7 +73,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/select_main_file"
-            android:contentDescription="دکمه انتخاب فایل اصلی از حافظه گوشی" />
+            android:contentDescription="دکمه انتخاب فایل اصلی" />
 
         <TextView
             android:id="@+id/tvMainFile"
@@ -84,14 +82,14 @@
             android:text="@string/no_file_selected"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="8dp"
-            android:contentDescription="نام فایل اصلی انتخاب شده" />
+            android:contentDescription="نام فایل اصلی" />
 
         <Button
             android:id="@+id/btnMainSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل اصلی"
-            android:contentDescription="باز کردن تنظیمات فایل اصلی: صدا، سرعت، زیر و بمی، اکو، ورود و خروج"
+            android:contentDescription="تنظیمات فایل اصلی"
             android:layout_marginBottom="8dp" />
 
         <Button
@@ -99,14 +97,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="افکت‌ها و جستجوی افکت"
-            android:contentDescription="باز کردن صفحه افکت‌ها و جستجوی افکت از اینترنت"
+            android:contentDescription="صفحه افکت‌ها"
             android:layout_marginBottom="16dp" />
 
-        <!-- فایل پس‌زمینه -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="فایل پس‌زمینه (موسیقی یا صدای پس‌زمینه)"
+            android:text="فایل پس‌زمینه"
             android:textSize="16sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -116,7 +113,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/select_bg_file"
-            android:contentDescription="دکمه انتخاب فایل پس‌زمینه از حافظه گوشی" />
+            android:contentDescription="دکمه انتخاب فایل پس‌زمینه" />
 
         <TextView
             android:id="@+id/tvBgFile"
@@ -125,21 +122,20 @@
             android:text="@string/no_file_selected"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="8dp"
-            android:contentDescription="نام فایل پس‌زمینه انتخاب شده" />
+            android:contentDescription="نام فایل پس‌زمینه" />
 
         <Button
             android:id="@+id/btnBgSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل پس‌زمینه"
-            android:contentDescription="باز کردن تنظیمات فایل پس‌زمینه: صدا، سرعت، زیر و بمی، اکو، ورود و خروج"
+            android:contentDescription="تنظیمات فایل پس‌زمینه"
             android:layout_marginBottom="16dp" />
 
-        <!-- فرمت خروجی -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/output_format"
+            android:text="فرمت خروجی"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
 
@@ -154,20 +150,27 @@
                 android:id="@+id/rbMp3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="M4A / AAC"
+                android:text="MP3"
                 android:checked="true"
-                android:contentDescription="انتخاب فرمت خروجی M4A" />
+                android:contentDescription="فرمت خروجی MP3" />
+
+            <RadioButton
+                android:id="@+id/rbM4a"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="M4A"
+                android:layout_marginStart="16dp"
+                android:contentDescription="فرمت خروجی M4A" />
 
             <RadioButton
                 android:id="@+id/rbWav"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="WAV"
-                android:layout_marginStart="24dp"
-                android:contentDescription="انتخاب فرمت خروجی WAV" />
+                android:layout_marginStart="16dp"
+                android:contentDescription="فرمت خروجی WAV" />
         </RadioGroup>
 
-        <!-- دکمه‌های اصلی -->
         <Button
             android:id="@+id/btnMix"
             android:layout_width="match_parent"
@@ -181,7 +184,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/reset"
-            android:contentDescription="دکمه بازنشانی همه انتخاب‌ها"
+            android:contentDescription="بازنشانی"
             android:layout_marginBottom="12dp" />
 
         <Button
@@ -189,7 +192,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/play_result"
-            android:contentDescription="دکمه پخش یا مکث نتیجه"
+            android:contentDescription="پخش نتیجه"
             android:enabled="false"
             android:layout_marginBottom="12dp" />
 
@@ -198,7 +201,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/save_to_downloads"
-            android:contentDescription="دکمه ذخیره در پوشه دانلودها"
+            android:contentDescription="ذخیره در دانلودها"
             android:enabled="false" />
 
         <ProgressBar
@@ -209,7 +212,7 @@
             android:visibility="gone"
             android:layout_marginTop="16dp"
             android:max="100"
-            android:contentDescription="نوار پیشرفت میکس" />
+            android:contentDescription="پیشرفت میکس" />
 
         <TextView
             android:id="@+id/tvStatus"
@@ -217,7 +220,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="center"
-            android:contentDescription="وضعیت عملیات" />
+            android:contentDescription="وضعیت" />
 
     </LinearLayout>
 </ScrollView>
