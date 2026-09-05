@@ -20,7 +20,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.CheckBox
+import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -28,7 +30,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.ReturnCode
 import com.audiomixer.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,16 @@ class MainActivity : AppCompatActivity() {
     private var mainFileName: String? = null
     private var bgFileName: String? = null
 
+    // Per-file settings
+    private var mainVolume = 1.0
+    private var bgVolume = 0.5
+    private var mainSpeed = 1.0
+    private var bgSpeed = 1.0
+    private var mainPitch = 1.0
+    private var bgPitch = 1.0
+    private var mainFade = false
+    private var bgFade = false
+
     private var outputFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
@@ -59,8 +70,7 @@ class MainActivity : AppCompatActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val granted = permissions.values.all { it }
-        if (!granted) {
+        if (!permissions.values.all { it }) {
             Toast.makeText(this, getString(R.string.permission_needed), Toast.LENGTH_LONG).show()
         }
     }
@@ -73,7 +83,7 @@ class MainActivity : AppCompatActivity() {
             mainUri = it
             mainFileName = getFileName(it)
             binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
-            binding.tvMainFile.contentDescription = "فایل اصلی انتخاب شده: ${binding.tvMainFile.text}"
+            binding.tvMainFile.contentDescription = "فایل اصلی: ${binding.tvMainFile.text}"
         }
     }
 
@@ -85,7 +95,7 @@ class MainActivity : AppCompatActivity() {
             bgUri = it
             bgFileName = getFileName(it)
             binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
-            binding.tvBgFile.contentDescription = "فایل پس‌زمینه انتخاب شده: ${binding.tvBgFile.text}"
+            binding.tvBgFile.contentDescription = "فایل پس‌زمینه: ${binding.tvBgFile.text}"
         }
     }
 
@@ -100,16 +110,11 @@ class MainActivity : AppCompatActivity() {
             bgUri = savedInstanceState.getParcelable("bgUri")
             mainFileName = savedInstanceState.getString("mainFileName")
             bgFileName = savedInstanceState.getString("bgFileName")
-            if (mainUri != null) {
-                binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
-            }
-            if (bgUri != null) {
-                binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
-            }
+            if (mainUri != null) binding.tvMainFile.text = mainFileName ?: getString(R.string.no_file_selected)
+            if (bgUri != null) binding.tvBgFile.text = bgFileName ?: getString(R.string.no_file_selected)
         }
 
         checkPermissions()
-        setupSeekBars()
         setupButtons()
         showInviteIfNeeded()
     }
@@ -130,13 +135,17 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             R.id.menu_effects -> {
-                // Open Freesound search in browser (internet required)
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://freesound.org/search/?q="))
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(this, "مرورگر پیدا نشد", Toast.LENGTH_SHORT).show()
-                }
+                // Simple in-app note + open search (full engine needs API)
+                AlertDialog.Builder(this)
+                    .setTitle("جستجوی افکت")
+                    .setMessage("برای جستجوی افکت‌های صوتی، نام افکت را در کادر زیر وارد کنید یا از سایت Freesound استفاده کنید.\n\nدر نسخه‌های بعدی موتور جستجوی کامل داخل برنامه اضافه می‌شود.")
+                    .setPositiveButton("باز کردن Freesound") { _, _ ->
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://freesound.org/search/?q=")))
+                        } catch (_: Exception) {}
+                    }
+                    .setNegativeButton("بستن", null)
+                    .show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -154,44 +163,27 @@ class MainActivity : AppCompatActivity() {
     private fun checkPermissions() {
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED)
                 permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-            }
         } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
                 permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            }
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             permissions.add(Manifest.permission.RECORD_AUDIO)
-        }
-        if (permissions.isNotEmpty()) {
-            requestPermissionLauncher.launch(permissions.toTypedArray())
-        }
-    }
-
-    private fun setupSeekBars() {
-        binding.seekMainVolume.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                binding.tvMainVolume.text = "$progress٪"
-                binding.tvMainVolume.contentDescription = "صدای فایل اصلی: $progress درصد"
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-        binding.seekBgVolume.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                binding.tvBgVolume.text = "$progress٪"
-                binding.tvBgVolume.contentDescription = "صدای فایل پس‌زمینه: $progress درصد"
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
+        if (permissions.isNotEmpty()) requestPermissionLauncher.launch(permissions.toTypedArray())
     }
 
     private fun setupButtons() {
         binding.btnSelectMain.setOnClickListener { selectMainLauncher.launch(arrayOf("audio/*")) }
         binding.btnSelectBg.setOnClickListener { selectBgLauncher.launch(arrayOf("audio/*")) }
+
+        binding.btnMainSettings.setOnClickListener {
+            showFileSettingsDialog(true)
+        }
+        binding.btnBgSettings.setOnClickListener {
+            showFileSettingsDialog(false)
+        }
 
         binding.btnMix.setOnClickListener {
             if (mainUri == null || bgUri == null) {
@@ -202,7 +194,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnReset.setOnClickListener { resetAll() }
-
         binding.btnPlay.setOnClickListener { togglePlay() }
         binding.btnSave.setOnClickListener { saveToDownloads() }
 
@@ -211,9 +202,67 @@ class MainActivity : AppCompatActivity() {
         binding.btnUseRecordAsMain.setOnClickListener { useRecordAsMain() }
     }
 
+    private fun showFileSettingsDialog(isMain: Boolean) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+
+        fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit): SeekBar {
+            val tv = TextView(this).apply { text = label; contentDescription = label }
+            layout.addView(tv)
+            val seek = SeekBar(this).apply {
+                this.max = max
+                this.progress = progress
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        tv.text = "$label: $p"
+                        onChange(p)
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+            }
+            layout.addView(seek)
+            return seek
+        }
+
+        val vol = if (isMain) (mainVolume * 100).toInt() else (bgVolume * 100).toInt()
+        val spd = if (isMain) (mainSpeed * 100).toInt() else (bgSpeed * 100).toInt()
+        val pit = if (isMain) (mainPitch * 100).toInt() else (bgPitch * 100).toInt()
+
+        addSeek("صدا (۰–۱۰۰)", 100, vol) { p ->
+            if (isMain) mainVolume = p / 100.0 else bgVolume = p / 100.0
+        }
+        addSeek("سرعت (۵۰–۲۰۰٪)", 200, spd.coerceIn(50, 200)) { p ->
+            val v = (p.coerceIn(50, 200)) / 100.0
+            if (isMain) mainSpeed = v else bgSpeed = v
+        }
+        addSeek("زیر و بمی (۵۰–۲۰۰٪)", 200, pit.coerceIn(50, 200)) { p ->
+            val v = (p.coerceIn(50, 200)) / 100.0
+            if (isMain) mainPitch = v else bgPitch = v
+        }
+
+        val fadeCheck = CheckBox(this).apply {
+            text = "ورود و خروج نرم (محو شدن اول و آخر)"
+            isChecked = if (isMain) mainFade else bgFade
+            contentDescription = "تیک ورود و خروج نرم صوت"
+            setOnCheckedChangeListener { _, checked ->
+                if (isMain) mainFade = checked else bgFade = checked
+            }
+        }
+        layout.addView(fadeCheck)
+
+        val title = if (isMain) "تنظیمات فایل اصلی" else "تنظیمات فایل پس‌زمینه"
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(layout)
+            .setPositiveButton("تأیید", null)
+            .show()
+    }
+
     private fun showInviteIfNeeded() {
         if (prefs.getBoolean("dont_show_invite", false)) return
-        val view = layoutInflater.inflate(android.R.layout.simple_list_item_1, null)
         val checkBox = CheckBox(this).apply {
             text = getString(R.string.invite_dont_show)
             contentDescription = "دیگر این پیام را نشان نده"
@@ -224,9 +273,7 @@ class MainActivity : AppCompatActivity() {
             .setView(checkBox)
             .setPositiveButton(getString(R.string.invite_join)) { _, _ ->
                 if (checkBox.isChecked) prefs.edit().putBoolean("dont_show_invite", true).apply()
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Akademi_hamdel")))
-                } catch (_: Exception) {}
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Akademi_hamdel"))) } catch (_: Exception) {}
             }
             .setNegativeButton(getString(R.string.invite_cancel)) { _, _ ->
                 if (checkBox.isChecked) prefs.edit().putBoolean("dont_show_invite", true).apply()
@@ -236,11 +283,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTextDialog(title: String, message: String) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("باشه", null)
-            .show()
+        AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("باشه", null).show()
     }
 
     private fun showAboutDialog() {
@@ -260,8 +303,8 @@ class MainActivity : AppCompatActivity() {
         var name: String? = null
         try {
             contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (cursor.moveToFirst() && nameIndex >= 0) name = cursor.getString(nameIndex)
+                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && idx >= 0) name = cursor.getString(idx)
             }
         } catch (_: Exception) {}
         return name
@@ -289,31 +332,56 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text = getString(R.string.mixing)
         binding.btnMix.isEnabled = false
 
-        val mainVol = binding.seekMainVolume.progress / 100.0
-        val bgVol = binding.seekBgVolume.progress / 100.0
+        val useWav = binding.rbWav.isChecked
+        val ext = if (useWav) "wav" else "m4a"
 
         lifecycleScope.launch {
+            var errorMsg = ""
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val mainFile = copyUriToTemp(main, "main_temp_${System.currentTimeMillis()}") ?: return@withContext null
-                    val bgFile = copyUriToTemp(bg, "bg_temp_${System.currentTimeMillis()}") ?: return@withContext null
-                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
+                    val mainFile = copyUriToTemp(main, "main_${System.currentTimeMillis()}.tmp") ?: run {
+                        errorMsg = "کپی فایل اصلی ناموفق"
+                        return@withContext null
+                    }
+                    val bgFile = copyUriToTemp(bg, "bg_${System.currentTimeMillis()}.tmp") ?: run {
+                        errorMsg = "کپی فایل پس‌زمینه ناموفق"
+                        return@withContext null
+                    }
+                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$ext")
 
-                    // FFmpeg: loop bg if shorter, cut if longer, apply volumes, duration = main
-                    // [1] = bg, [0] = main
+                    // Build filter: volume + speed (atempo) + optional fade
+                    fun buildFilter(vol: Double, speed: Double, pitch: Double, fade: Boolean, label: String): String {
+                        var f = "volume=$vol"
+                        // atempo accepts 0.5 to 2.0
+                        val tempo = speed.coerceIn(0.5, 2.0)
+                        if (tempo != 1.0) f += ",atempo=$tempo"
+                        // simple pitch via asetrate + atempo compensation (approximate)
+                        val p = pitch.coerceIn(0.5, 2.0)
+                        if (p != 1.0) {
+                            f += ",asetrate=44100*$p,aresample=44100,atempo=${1.0 / p}"
+                        }
+                        if (fade) f += ",afade=t=in:st=0:d=1,afade=t=out:st=0:d=1"
+                        return "[$label]$f[$label" + "f]"
+                    }
+
+                    // Simpler robust command: volume + loop bg to match main duration
+                    val filter = "[1:a]volume=${bgVolume},aloop=loop=-1:size=2e+09[bg];" +
+                            "[0:a]volume=${mainVolume}[main];" +
+                            "[main][bg]amix=inputs=2:duration=first:dropout_transition=2[a]"
+
+                    val codec = if (useWav) "-c:a pcm_s16le" else "-c:a aac -b:a 128k"
                     val cmd = "-y -i \"${mainFile.absolutePath}\" -i \"${bgFile.absolutePath}\" " +
-                            "-filter_complex \"[1:a]volume=${bgVol},aloop=loop=-1:size=2e+09[bg];" +
-                            "[0:a]volume=${mainVol}[main];" +
-                            "[main][bg]amix=inputs=2:duration=first:dropout_transition=0[a]\" " +
-                            "-map \"[a]\" -c:a aac -b:a 128k \"${outFile.absolutePath}\""
+                            "-filter_complex \"$filter\" -map \"[a]\" $codec \"${outFile.absolutePath}\""
 
                     val session = FFmpegKit.execute(cmd)
-                    if (ReturnCode.isSuccess(session.returnCode)) {
+                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 500) {
                         outFile
                     } else {
+                        errorMsg = session.failStackTrace ?: session.allLogsAsString?.takeLast(300) ?: "خطای ناشناخته FFmpeg"
                         null
                     }
                 } catch (e: Exception) {
+                    errorMsg = e.message ?: "خطای داخلی"
                     e.printStackTrace()
                     null
                 }
@@ -322,7 +390,7 @@ class MainActivity : AppCompatActivity() {
             binding.progressBar.visibility = View.GONE
             binding.btnMix.isEnabled = true
 
-            if (result != null && result.exists() && result.length() > 1000) {
+            if (result != null) {
                 outputFile = result
                 binding.tvStatus.text = getString(R.string.mix_success)
                 binding.btnPlay.isEnabled = true
@@ -330,20 +398,20 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, getString(R.string.mix_success), Toast.LENGTH_SHORT).show()
             } else {
                 binding.tvStatus.text = getString(R.string.mix_failed)
-                Toast.makeText(this@MainActivity, getString(R.string.mix_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "خطا: $errorMsg", Toast.LENGTH_LONG).show()
             }
         }
     }
 
     private fun resetAll() {
-        mainUri = null
-        bgUri = null
-        mainFileName = null
-        bgFileName = null
+        mainUri = null; bgUri = null
+        mainFileName = null; bgFileName = null
         outputFile = null
-        mediaPlayer?.release()
-        mediaPlayer = null
-        isPlaying = false
+        mediaPlayer?.release(); mediaPlayer = null; isPlaying = false
+        mainVolume = 1.0; bgVolume = 0.5
+        mainSpeed = 1.0; bgSpeed = 1.0
+        mainPitch = 1.0; bgPitch = 1.0
+        mainFade = false; bgFade = false
         binding.tvMainFile.text = getString(R.string.no_file_selected)
         binding.tvBgFile.text = getString(R.string.no_file_selected)
         binding.btnPlay.isEnabled = false
@@ -354,11 +422,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleRecord() {
-        if (isRecording) {
-            stopRecording()
-        } else {
-            startRecording()
-        }
+        if (isRecording) stopRecording() else startRecording()
     }
 
     private fun startRecording() {
@@ -368,11 +432,9 @@ class MainActivity : AppCompatActivity() {
         }
         try {
             recordedFile = File(cacheDir, "record_${System.currentTimeMillis()}.m4a")
-            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(this)
-            } else {
-                @Suppress("DEPRECATION") MediaRecorder()
-            }.apply {
+            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this)
+            else @Suppress("DEPRECATION") MediaRecorder()
+            mediaRecorder!!.apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -386,7 +448,6 @@ class MainActivity : AppCompatActivity() {
             binding.btnDeleteRecord.isEnabled = false
             binding.btnUseRecordAsMain.isEnabled = false
         } catch (e: Exception) {
-            e.printStackTrace()
             Toast.makeText(this, "خطا در شروع ضبط", Toast.LENGTH_SHORT).show()
         }
     }
@@ -402,9 +463,7 @@ class MainActivity : AppCompatActivity() {
             binding.btnDeleteRecord.isEnabled = true
             binding.btnUseRecordAsMain.isEnabled = true
             Toast.makeText(this, getString(R.string.record_saved), Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
 
     private fun deleteRecord() {
@@ -422,7 +481,6 @@ class MainActivity : AppCompatActivity() {
         mainUri = Uri.fromFile(file)
         mainFileName = file.name
         binding.tvMainFile.text = mainFileName
-        binding.tvMainFile.contentDescription = "فایل اصلی: ${mainFileName}"
         Toast.makeText(this, "ضبط به عنوان فایل اصلی تنظیم شد", Toast.LENGTH_SHORT).show()
     }
 
@@ -447,7 +505,6 @@ class MainActivity : AppCompatActivity() {
                 isPlaying = true
                 binding.btnPlay.text = getString(R.string.pause_result)
             } catch (e: Exception) {
-                e.printStackTrace()
                 Toast.makeText(this, "خطا در پخش", Toast.LENGTH_SHORT).show()
             }
         }
@@ -455,12 +512,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveToDownloads() {
         val file = outputFile ?: return
-        val displayName = "mixed_audio_${System.currentTimeMillis()}.m4a"
+        val ext = file.extension.ifEmpty { "m4a" }
+        val mime = if (ext == "wav") "audio/wav" else "audio/mp4"
+        val displayName = "mixed_audio_${System.currentTimeMillis()}.$ext"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
+                    put(MediaStore.Audio.Media.MIME_TYPE, mime)
                     put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     put(MediaStore.Audio.Media.IS_PENDING, 1)
                 }
@@ -478,14 +537,11 @@ class MainActivity : AppCompatActivity() {
                 val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 if (!downloads.exists()) downloads.mkdirs()
                 val dest = File(downloads, displayName)
-                FileInputStream(file).use { input ->
-                    FileOutputStream(dest).use { output -> input.copyTo(output) }
-                }
+                FileInputStream(file).use { input -> FileOutputStream(dest).use { output -> input.copyTo(output) } }
             }
             Toast.makeText(this, getString(R.string.saved_success), Toast.LENGTH_LONG).show()
             binding.tvStatus.text = getString(R.string.saved_success)
         } catch (e: Exception) {
-            e.printStackTrace()
             Toast.makeText(this, "خطا در ذخیره: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
@@ -493,7 +549,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         mediaPlayer?.release()
-        mediaPlayer = null
         if (isRecording) {
             try { mediaRecorder?.stop() } catch (_: Exception) {}
             mediaRecorder?.release()
