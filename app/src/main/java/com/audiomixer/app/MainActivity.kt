@@ -184,8 +184,8 @@ class MainActivity : AppCompatActivity() {
 
         val mainVol = binding.seekMainVolume.progress / 100f
         val bgVol = binding.seekBgVolume.progress / 100f
-        val isMp3 = binding.rbMp3.isChecked
-        val extension = if (isMp3) "mp3" else "wav"
+        // Library always outputs AAC in MP4 container
+        val extension = "m4a"
 
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -206,7 +206,7 @@ class MainActivity : AppCompatActivity() {
                     mixer.setChannelCount(2)
 
                     mixer.start()
-                    mixer.join()
+                    mixer.processSync()  // synchronous processing
 
                     outFile
                 } catch (e: Exception) {
@@ -246,7 +246,7 @@ class MainActivity : AppCompatActivity() {
                     prepare()
                     start()
                     setOnCompletionListener {
-                        isPlaying = false
+                        this@MainActivity.isPlaying = false
                         binding.btnPlay.text = getString(R.string.play_result)
                     }
                 }
@@ -262,9 +262,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveToDownloads() {
         val file = outputFile ?: return
-        val isMp3 = binding.rbMp3.isChecked
-        val mime = if (isMp3) "audio/mpeg" else "audio/wav"
-        val displayName = "mixed_audio_${System.currentTimeMillis()}." + if (isMp3) "mp3" else "wav"
+        val mime = "audio/mp4"
+        val displayName = "mixed_audio_${System.currentTimeMillis()}.m4a"
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
