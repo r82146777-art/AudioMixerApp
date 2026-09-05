@@ -21,41 +21,62 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Make gradlew executable
+      - name: Grant execute permission for gradlew (if exists)
         run: |
-          if [ -f gradlew ]; then chmod +x gradlew; fi
+          if [ -f ./gradlew ]; then chmod +x ./gradlew; fi
 
-      - name: Generate Gradle Wrapper if missing
+      - name: Generate Gradle Wrapper
         run: |
-          if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version 8.2
+          gradle wrapper --gradle-version 8.2 || true
+          if [ ! -f ./gradlew ]; then
+            curl -sL https://services.gradle.org/distributions/gradle-8.2-bin.zip -o /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp
+            /tmp/gradle-8.2/bin/gradle wrapper --gradle-version 8.2
           fi
-          chmod +x gradlew
+          chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info
+
+      - name: List APK
+        run: find app/build/outputs -name "*.apk" || true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: AudioMixer-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 90
+          if-no-files-found: warn
 
-      - name: Create GitHub Release
+      - name: Create Release with APK
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: AudioMixer v1.0.${{ github.run_number }}
+          name: میکسر صوتی - نسخه v1.0.${{ github.run_number }}
           body: |
-            اپلیکیشن میکس صوتی آماده نصب
-            
-            فایل APK را دانلود و نصب کنید.
-            برای نصب، گزینه «نصب از منابع ناشناس» را در تنظیمات گوشی فعال کنید.
-          files: app/build/outputs/apk/debug/app-debug.apk
+            ## اپلیکیشن میکس صوتی آماده دانلود و نصب
+
+            **فایل APK را دانلود کنید و نصب کنید.**
+
+            ### نحوه نصب:
+            1. فایل `app-debug.apk` را دانلود کنید.
+            2. در تنظیمات گوشی، «نصب از منابع ناشناس» یا «Allow from this source» را فعال کنید.
+            3. فایل را باز کنید و نصب کنید.
+
+            ### قابلیت‌ها:
+            - انتخاب دو فایل صوتی
+            - تنظیم ولوم هر فایل
+            - میکس و ذخیره به صورت MP3/WAV
+            - پخش نتیجه
+            - ذخیره در Downloads
+            - پشتیبانی کامل TalkBack
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
         env:
