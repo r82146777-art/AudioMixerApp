@@ -19,9 +19,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.audiomixer.app.databinding.ActivityMainBinding
-import com.github.zeroonezeror.android_audio_mixer.AudioInput
-import com.github.zeroonezeror.android_audio_mixer.AudioMixer
-import com.github.zeroonezeror.android_audio_mixer.GeneralAudioInput
+import zeroonezero.android.audio_mixer.AudioMixer
+import zeroonezero.android.audio_mixer.input.GeneralAudioInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -205,7 +204,6 @@ class MainActivity : AppCompatActivity() {
                     mixer.setSampleRate(44100)
                     mixer.setBitRate(128000)
                     mixer.setChannelCount(2)
-                    // Parallel mixing by default in the library
 
                     mixer.start()
                     mixer.join()
