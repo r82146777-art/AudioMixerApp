@@ -9,10 +9,11 @@ import com.arthenica.ffmpegkit.ReturnCode
 import zeroonezero.android.audio_mixer.AudioMixer
 import zeroonezero.android.audio_mixer.input.GeneralAudioInput
 import java.io.File
+import java.util.Locale
 
 /**
- * Runs in SEPARATE process (:mix).
- * Optimized for long files (10–60+ min) with explicit duration and fast AAC.
+ * Separate process (:mix). Mix short + long files reliably.
+ * All numbers use Locale.US so FFmpeg never sees Persian digits.
  */
 class MixService : Service() {
 
@@ -38,45 +39,74 @@ class MixService : Service() {
         val mainEcho = intent.getFloatExtra(EXTRA_MAIN_ECHO, 0f)
         val bgEcho = intent.getFloatExtra(EXTRA_BG_ECHO, 0f)
         val fade = intent.getBooleanExtra(EXTRA_FADE, false)
-        val useFfmpeg = intent.getBooleanExtra(EXTRA_USE_FFMPEG, true)
         val durationSec = intent.getDoubleExtra(EXTRA_DURATION_SEC, 0.0)
 
         Thread {
             var ok = false
-            var err = ""
-            try {
-                File(outPath).parentFile?.mkdirs()
+            var err = "میکس ناموفق بود"
 
-                if (useFfmpeg) {
-                    ok = runFfmpegFast(
-                        mainPath, bgPath, outPath,
-                        mainVol, bgVol, mainSpeed, bgSpeed,
-                        mainPitch, bgPitch, mainEcho, bgEcho,
-                        fade, durationSec
-                    )
+            try {
+                if (mainPath.isBlank() || bgPath.isBlank() || outPath.isBlank()) {
+                    err = "مسیر فایل‌ها نامعتبر است"
+                } else if (!File(mainPath).exists() || !File(bgPath).exists()) {
+                    err = "فایل ورودی پیدا نشد"
+                } else {
+                    File(outPath).parentFile?.mkdirs()
+                    File(outPath).delete()
+
+                    val needsFx = kotlin.math.abs(mainSpeed - 1f) > 0.02f ||
+                            kotlin.math.abs(bgSpeed - 1f) > 0.02f ||
+                            kotlin.math.abs(mainPitch - 1f) > 0.02f ||
+                            kotlin.math.abs(bgPitch - 1f) > 0.02f ||
+                            mainEcho > 0.05f || bgEcho > 0.05f || fade
+
+                    val longish = durationSec > 180 || File(mainPath).length() > 4_000_000L
+
+                    // 1) Prefer Java mixer for short files without advanced FX (stable, no native)
+                    if (!needsFx && !longish) {
+                        ok = runJavaSafe(mainPath, bgPath, outPath, mainVol, bgVol)
+                    }
+
+                    // 2) FFmpeg simple (volume only + loop) — best for long files
                     if (!ok) {
-                        // Simple FFmpeg without advanced filters
                         ok = runFfmpegSimple(mainPath, bgPath, outPath, mainVol, bgVol, durationSec)
                     }
-                    if (!ok) {
-                        // Last resort: Java mixer (only if not extremely long)
-                        val mainLen = File(mainPath).length()
-                        if (mainLen < 15_000_000L) {
-                            ok = runJava(mainPath, bgPath, outPath, mainVol, bgVol)
-                        }
-                        if (!ok) err = "میکس فایل طولانی ناموفق بود"
+
+                    // 3) FFmpeg with effects if requested
+                    if (!ok && needsFx) {
+                        ok = runFfmpegEffects(
+                            mainPath, bgPath, outPath,
+                            mainVol, bgVol, mainSpeed, bgSpeed,
+                            mainPitch, bgPitch, mainEcho, bgEcho,
+                            fade, durationSec
+                        )
                     }
-                } else {
-                    ok = runJava(mainPath, bgPath, outPath, mainVol, bgVol)
-                    if (!ok) err = "میکس ناموفق بود"
+
+                    // 4) Always try Java as last resort
+                    if (!ok) {
+                        ok = runJavaSafe(mainPath, bgPath, outPath, mainVol, bgVol)
+                    }
+
+                    if (!ok) {
+                        err = "میکس انجام نشد. فرمت فایل را عوض کنید یا دوباره انتخاب کنید."
+                    } else {
+                        err = ""
+                    }
                 }
             } catch (t: Throwable) {
-                err = t.message ?: t.javaClass.simpleName
+                // Never show raw English stack to user
+                val msg = t.message ?: ""
+                err = when {
+                    msg.contains("UnsatisfiedLink", true) || msg.contains("ffmpeg", true) ->
+                        "موتور میکس آماده نیست. دوباره تلاش کنید."
+                    msg.contains("codec", true) || msg.contains("format", true) ->
+                        "فرمت یکی از فایل‌ها پشتیبانی نمی‌شود."
+                    else -> "خطا در میکس. دوباره تلاش کنید."
+                }
                 try {
-                    ok = runFfmpegSimple(mainPath, bgPath, outPath, mainVol, bgVol, durationSec)
+                    ok = runJavaSafe(mainPath, bgPath, outPath, mainVol, bgVol)
                     if (ok) err = ""
-                } catch (t2: Throwable) {
-                    err = t2.message ?: err
+                } catch (_: Throwable) {
                     ok = false
                 }
             }
@@ -94,38 +124,45 @@ class MixService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun trackFilter(vol: Float, speed: Float, pitch: Float, echo: Float): String {
-        val parts = mutableListOf("volume=${vol.coerceIn(0f, 2f)}")
-        val sp = speed.coerceIn(0.5f, 2f)
-        if (kotlin.math.abs(sp - 1f) > 0.01f) {
-            // atempo only accepts 0.5–2.0; chain if needed
-            var remaining = sp
-            while (remaining > 2.0f) {
-                parts.add("atempo=2.0")
-                remaining /= 2.0f
+    private fun f(v: Float): String = String.format(Locale.US, "%.3f", v)
+    private fun d(v: Double): String = String.format(Locale.US, "%.3f", v)
+
+    private fun runFfmpegSimple(
+        mainPath: String, bgPath: String, outPath: String,
+        mainVol: Float, bgVol: Float,
+        durationSec: Double
+    ): Boolean {
+        return try {
+            val filter = "[0:a]volume=${f(mainVol)}[a0];[1:a]volume=${f(bgVol)}[a1];" +
+                    "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[a]"
+
+            val args = ArrayList<String>()
+            args.add("-y")
+            args.add("-i"); args.add(mainPath)
+            args.add("-stream_loop"); args.add("-1")
+            args.add("-i"); args.add(bgPath)
+            args.add("-filter_complex"); args.add(filter)
+            args.add("-map"); args.add("[a]")
+            args.add("-c:a"); args.add("aac")
+            args.add("-b:a"); args.add("96k")
+            args.add("-ac"); args.add("2")
+            args.add("-ar"); args.add("44100")
+            if (durationSec > 1.0) {
+                args.add("-t"); args.add(d(durationSec))
+            } else {
+                args.add("-shortest")
             }
-            while (remaining < 0.5f) {
-                parts.add("atempo=0.5")
-                remaining /= 0.5f
-            }
-            parts.add("atempo=${"%.3f".format(remaining)}")
+            args.add(outPath)
+
+            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            val out = File(outPath)
+            ReturnCode.isSuccess(session.returnCode) && out.exists() && out.length() > 200
+        } catch (_: Throwable) {
+            false
         }
-        val p = pitch.coerceIn(0.5f, 2f)
-        if (kotlin.math.abs(p - 1f) > 0.01f) {
-            parts.add("asetrate=44100*$p")
-            parts.add("aresample=44100")
-            val comp = (1.0 / p).toFloat().coerceIn(0.5f, 2f)
-            parts.add("atempo=${"%.3f".format(comp)}")
-        }
-        if (echo > 0.05f) {
-            val g = (0.5f * echo).coerceIn(0.1f, 0.7f)
-            parts.add("aecho=0.8:$g:40|60:0.3|0.25")
-        }
-        return parts.joinToString(",")
     }
 
-    /** Fast path for long files — explicit -t, low bitrate, no normalize */
-    private fun runFfmpegFast(
+    private fun runFfmpegEffects(
         mainPath: String, bgPath: String, outPath: String,
         mainVol: Float, bgVol: Float,
         mainSpeed: Float, bgSpeed: Float,
@@ -134,102 +171,105 @@ class MixService : Service() {
         fade: Boolean,
         durationSec: Double
     ): Boolean {
-        val mainF = trackFilter(mainVol, mainSpeed, mainPitch, mainEcho)
-        val bgF = trackFilter(bgVol, bgSpeed, bgPitch, bgEcho)
+        return try {
+            val mainF = buildTrack(mainVol, mainSpeed, mainPitch, mainEcho)
+            val bgF = buildTrack(bgVol, bgSpeed, bgPitch, bgEcho)
 
-        val fadePart = if (fade && durationSec > 3.0) {
-            val outStart = (durationSec - 1.5).coerceAtLeast(0.0)
-            ";[am]afade=t=in:st=0:d=1.2,afade=t=out:st=$outStart:d=1.5[a]"
-        } else if (fade) {
-            ";[am]afade=t=in:st=0:d=0.8,afade=t=out:st=0:d=0.8[a]"
-        } else {
-            "[a]" // will fix label below
+            val filter = if (fade && durationSec > 3.0) {
+                val outStart = d((durationSec - 1.5).coerceAtLeast(0.0))
+                "[0:a]$mainF[a0];[1:a]$bgF[a1];" +
+                        "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[am];" +
+                        "[am]afade=t=in:st=0:d=1.0,afade=t=out:st=$outStart:d=1.5[a]"
+            } else if (fade) {
+                "[0:a]$mainF[a0];[1:a]$bgF[a1];" +
+                        "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[am];" +
+                        "[am]afade=t=in:st=0:d=0.8,afade=t=out:st=0:d=0.8[a]"
+            } else {
+                "[0:a]$mainF[a0];[1:a]$bgF[a1];" +
+                        "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[a]"
+            }
+
+            val args = ArrayList<String>()
+            args.add("-y")
+            args.add("-i"); args.add(mainPath)
+            args.add("-stream_loop"); args.add("-1")
+            args.add("-i"); args.add(bgPath)
+            args.add("-filter_complex"); args.add(filter)
+            args.add("-map"); args.add("[a]")
+            args.add("-c:a"); args.add("aac")
+            args.add("-b:a"); args.add("96k")
+            args.add("-ac"); args.add("2")
+            args.add("-ar"); args.add("44100")
+            if (durationSec > 1.0) {
+                args.add("-t"); args.add(d(durationSec))
+            } else {
+                args.add("-shortest")
+            }
+            args.add(outPath)
+
+            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            val out = File(outPath)
+            ReturnCode.isSuccess(session.returnCode) && out.exists() && out.length() > 200
+        } catch (_: Throwable) {
+            false
         }
-
-        val filter = if (fade) {
-            "[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[am]$fadePart"
-        } else {
-            "[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]"
-        }
-
-        val args = mutableListOf(
-            "-y",
-            "-threads", "0",
-            "-i", mainPath,
-            "-stream_loop", "-1",
-            "-i", bgPath,
-            "-filter_complex", filter,
-            "-map", "[a]",
-            "-c:a", "aac",
-            "-b:a", "96k",
-            "-ac", "2",
-            "-ar", "44100"
-        )
-        if (durationSec > 1.0) {
-            args.add("-t")
-            args.add("%.3f".format(durationSec))
-        } else {
-            args.add("-shortest")
-        }
-        args.add(outPath)
-
-        val session = FFmpegKit.executeWithArguments(args.toTypedArray())
-        val out = File(outPath)
-        return ReturnCode.isSuccess(session.returnCode) && out.exists() && out.length() > 200
     }
 
-    private fun runFfmpegSimple(
+    private fun buildTrack(vol: Float, speed: Float, pitch: Float, echo: Float): String {
+        val parts = ArrayList<String>()
+        parts.add("volume=${f(vol.coerceIn(0f, 2f))}")
+
+        var sp = speed.coerceIn(0.5f, 2f)
+        if (kotlin.math.abs(sp - 1f) > 0.02f) {
+            parts.add("atempo=${f(sp)}")
+        }
+
+        val p = pitch.coerceIn(0.5f, 2f)
+        if (kotlin.math.abs(p - 1f) > 0.02f) {
+            parts.add("asetrate=${f(44100f * p)}")
+            parts.add("aresample=44100")
+            parts.add("atempo=${f((1f / p).coerceIn(0.5f, 2f))}")
+        }
+
+        if (echo > 0.05f) {
+            val g = f((0.4f * echo).coerceIn(0.1f, 0.6f))
+            parts.add("aecho=0.8:$g:50:0.3")
+        }
+        return parts.joinToString(",")
+    }
+
+    private fun runJavaSafe(
         mainPath: String, bgPath: String, outPath: String,
-        mainVol: Float, bgVol: Float,
-        durationSec: Double
+        mainVol: Float, bgVol: Float
     ): Boolean {
-        val filter =
-            "[0:a]volume=$mainVol[a0];[1:a]volume=$bgVol[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]"
-        val args = mutableListOf(
-            "-y",
-            "-threads", "0",
-            "-i", mainPath,
-            "-stream_loop", "-1",
-            "-i", bgPath,
-            "-filter_complex", filter,
-            "-map", "[a]",
-            "-c:a", "aac",
-            "-b:a", "96k",
-            "-ac", "2",
-            "-ar", "44100"
-        )
-        if (durationSec > 1.0) {
-            args.add("-t")
-            args.add("%.3f".format(durationSec))
-        } else {
-            args.add("-shortest")
+        return try {
+            File(outPath).delete()
+            val mixer = AudioMixer(outPath)
+            val in1 = GeneralAudioInput(mainPath)
+            in1.setVolume(mainVol.coerceIn(0f, 2f))
+            val in2 = GeneralAudioInput(bgPath)
+            in2.setVolume(bgVol.coerceIn(0f, 2f))
+
+            val d1 = try { in1.durationUs } catch (_: Exception) { 0L }
+            val d2 = try { in2.durationUs } catch (_: Exception) { 0L }
+            if (d1 > 0 && d2 > d1) {
+                try { in2.setEndTimeUs(d1) } catch (_: Exception) {}
+            }
+            try { mixer.setLoopingEnabled(true) } catch (_: Exception) {}
+
+            mixer.addDataSource(in1)
+            mixer.addDataSource(in2)
+            mixer.setSampleRate(44100)
+            mixer.setBitRate(96000)
+            mixer.setChannelCount(2)
+            mixer.start()
+            mixer.processSync()
+
+            val out = File(outPath)
+            out.exists() && out.length() > 500
+        } catch (_: Throwable) {
+            false
         }
-        args.add(outPath)
-
-        val session = FFmpegKit.executeWithArguments(args.toTypedArray())
-        val out = File(outPath)
-        return ReturnCode.isSuccess(session.returnCode) && out.exists() && out.length() > 200
-    }
-
-    private fun runJava(mainPath: String, bgPath: String, outPath: String, mainVol: Float, bgVol: Float): Boolean {
-        val out = File(outPath)
-        val mixer = AudioMixer(out.absolutePath)
-        val in1 = GeneralAudioInput(mainPath)
-        in1.setVolume(mainVol)
-        val in2 = GeneralAudioInput(bgPath)
-        in2.setVolume(bgVol)
-        val d1 = in1.durationUs
-        val d2 = in2.durationUs
-        if (d1 > 0 && d2 > d1) in2.setEndTimeUs(d1)
-        mixer.setLoopingEnabled(true)
-        mixer.addDataSource(in1)
-        mixer.addDataSource(in2)
-        mixer.setSampleRate(44100)
-        mixer.setBitRate(96000)
-        mixer.setChannelCount(2)
-        mixer.start()
-        mixer.processSync()
-        return out.exists() && out.length() > 500
     }
 
     companion object {
