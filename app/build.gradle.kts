@@ -11,14 +11,10 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
-        }
     }
 
     buildTypes {
@@ -44,9 +40,6 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
-        jniLibs {
-            useLegacyPackaging = true
-        }
     }
 }
 
@@ -57,10 +50,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // Full GPL for MP3 (libmp3lame) + all audio filters
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full-gpl:6.0.3")
-
-    // Stable Java mixer as primary/fallback
+    // Stable pure Java/Kotlin audio mixer — no native crash
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
 
     testImplementation("junit:junit:4.13.2")
