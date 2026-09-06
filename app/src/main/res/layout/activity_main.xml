@@ -93,7 +93,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل اصلی"
-            android:contentDescription="تنظیمات فایل اصلی"
+            android:contentDescription="تنظیمات فایل اصلی: صدا سرعت زیر و بمی اکو"
             android:layout_marginBottom="8dp" />
 
         <Button
@@ -137,8 +137,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="تنظیمات فایل پس‌زمینه"
-            android:contentDescription="تنظیمات فایل پس‌زمینه"
+            android:contentDescription="تنظیمات فایل پس‌زمینه: صدا سرعت زیر و بمی اکو"
             android:layout_marginBottom="16dp" />
+
+        <CheckBox
+            android:id="@+id/cbFade"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ورود و خروج نرم (محو شدن اول و آخر فایل نتیجه)"
+            android:contentDescription="تیک ورود و خروج نرم روی فایل نتیجه"
+            android:layout_marginBottom="12dp" />
 
         <TextView
             android:layout_width="match_parent"
