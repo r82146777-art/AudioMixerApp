@@ -15,6 +15,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.os.ResultReceiver
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.view.Menu
@@ -29,15 +32,10 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.ReturnCode
-import com.arthenica.ffmpegkit.StatisticsCallback
 import com.audiomixer.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import zeroonezero.android.audio_mixer.AudioMixer
-import zeroonezero.android.audio_mixer.input.GeneralAudioInput
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -69,6 +67,9 @@ class MainActivity : AppCompatActivity() {
     private var mediaRecorder: MediaRecorder? = null
     private var recordedFile: File? = null
     private var isRecording = false
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var mixTimeoutRunnable: Runnable? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -266,7 +267,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Settings: volume, speed, pitch, echo (fade is global near format) */
     private fun showFileSettingsDialog(isMain: Boolean) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -346,15 +346,10 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun needsAdvancedEffects(): Boolean {
-        return mainSpeed != 1f || bgSpeed != 1f ||
-                mainPitch != 1f || bgPitch != 1f ||
-                mainEcho > 0.01f || bgEcho > 0.01f ||
-                binding.cbFade.isChecked
-    }
-
-    private fun isLongFile(f: File): Boolean = f.length() > 3_000_000L // ~3MB ≈ چند دقیقه
-
+    /**
+     * Mix runs in MixService process ":mix".
+     * If FFmpeg native crashes, only that process dies — this Activity stays up.
+     */
     private fun doMix() {
         val main = mainFile ?: return
         val bg = bgFile ?: return
@@ -366,168 +361,81 @@ class MainActivity : AppCompatActivity() {
         isMixing = true
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.isIndeterminate = true
-        binding.tvStatus.text = "در حال میکس... لطفاً صبر کنید"
+        binding.tvStatus.text = "در حال میکس... لطفاً صبر کنید (برنامه بیرون نمی‌رود)"
         binding.btnMix.isEnabled = false
 
-        val useFfmpeg = needsAdvancedEffects() || isLongFile(main) || isLongFile(bg)
+        val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
+        val needsEffects = mainSpeed != 1f || bgSpeed != 1f ||
+                mainPitch != 1f || bgPitch != 1f ||
+                mainEcho > 0.01f || bgEcho > 0.01f ||
+                binding.cbFade.isChecked
+        val longFile = main.length() > 3_000_000L || bg.length() > 3_000_000L
+        val useFfmpeg = needsEffects || longFile
 
-        if (useFfmpeg) {
-            mixWithFFmpegAsync(main, bg)
-        } else {
-            mixWithJava(main, bg)
-        }
-    }
-
-    private fun mixWithJava(main: File, bg: File) {
-        val mv = mainVolume
-        val bv = bgVolume
-        lifecycleScope.launch {
-            var errorMsg = ""
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
-                    val mixer = AudioMixer(outFile.absolutePath)
-                    val in1 = GeneralAudioInput(main.absolutePath)
-                    in1.setVolume(mv)
-                    val in2 = GeneralAudioInput(bg.absolutePath)
-                    in2.setVolume(bv)
-                    val d1 = in1.durationUs
-                    val d2 = in2.durationUs
-                    if (d1 > 0 && d2 > d1) in2.setEndTimeUs(d1)
-                    mixer.setLoopingEnabled(true)
-                    mixer.addDataSource(in1)
-                    mixer.addDataSource(in2)
-                    mixer.setSampleRate(44100)
-                    mixer.setBitRate(128000)
-                    mixer.setChannelCount(2)
-                    mixer.start()
-                    mixer.processSync()
-                    if (outFile.exists() && outFile.length() > 500) outFile else {
-                        errorMsg = "خروجی خالی"
-                        null
-                    }
-                } catch (e: Exception) {
-                    errorMsg = e.message ?: "خطا"
-                    null
+        val receiver = object : ResultReceiver(uiHandler) {
+            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                mixTimeoutRunnable?.let { uiHandler.removeCallbacks(it) }
+                mixTimeoutRunnable = null
+                val ok = resultData?.getBoolean(MixService.KEY_OK) == true
+                val path = resultData?.getString(MixService.KEY_PATH)
+                val err = resultData?.getString(MixService.KEY_ERROR) ?: ""
+                if (ok && path != null) {
+                    val f = File(path)
+                    if (f.exists()) finishMix(f, "") else finishMix(null, "فایل خروجی پیدا نشد")
+                } else {
+                    finishMix(null, err.ifEmpty { "میکس ناموفق" })
                 }
             }
-            finishMix(result, errorMsg)
-        }
-    }
-
-    private fun buildTrackFilter(vol: Float, speed: Float, pitch: Float, echo: Float): String {
-        val parts = mutableListOf("volume=${vol.coerceIn(0f, 2f)}")
-        val sp = speed.coerceIn(0.5f, 2.0f)
-        if (sp != 1f) parts.add("atempo=$sp")
-        val p = pitch.coerceIn(0.5f, 2.0f)
-        if (p != 1f) {
-            parts.add("asetrate=44100*$p")
-            parts.add("aresample=44100")
-            // compensate duration change from asetrate
-            val comp = (1.0 / p).toFloat().coerceIn(0.5f, 2.0f)
-            parts.add("atempo=$comp")
-        }
-        if (echo > 0.05f) {
-            val g = (0.5f * echo).coerceIn(0.1f, 0.8f)
-            parts.add("aecho=0.8:$g:60:0.4")
-        }
-        return parts.joinToString(",")
-    }
-
-    private fun mixWithFFmpegAsync(main: File, bg: File) {
-        val format = when {
-            binding.rbWav.isChecked -> "wav"
-            binding.rbM4a.isChecked -> "m4a"
-            else -> "mp3"
-        }
-        // audio package may not have libmp3lame → use aac for mp3 choice as m4a
-        val outExt = if (format == "wav") "wav" else "m4a"
-        val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$outExt")
-
-        val mainF = buildTrackFilter(mainVolume, mainSpeed, mainPitch, mainEcho)
-        val bgF = buildTrackFilter(bgVolume, bgSpeed, bgPitch, bgEcho)
-
-        var filter = "[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[am]"
-        if (binding.cbFade.isChecked) {
-            filter += ";[am]afade=t=in:st=0:d=2,afade=t=out:st=0:d=2[a]"
-        } else {
-            filter += "[a]"
-            // fix: last label
-            filter = "[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]"
         }
 
-        if (binding.cbFade.isChecked) {
-            filter = "[0:a]$mainF[a0];[1:a]$bgF[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[am];[am]afade=t=in:st=0:d=1.5,afade=t=out:st=0:d=1.5[a]"
+        val intent = Intent(this, MixService::class.java).apply {
+            putExtra(MixService.EXTRA_RECEIVER, receiver)
+            putExtra(MixService.EXTRA_MAIN, main.absolutePath)
+            putExtra(MixService.EXTRA_BG, bg.absolutePath)
+            putExtra(MixService.EXTRA_OUT, outFile.absolutePath)
+            putExtra(MixService.EXTRA_MAIN_VOL, mainVolume)
+            putExtra(MixService.EXTRA_BG_VOL, bgVolume)
+            putExtra(MixService.EXTRA_MAIN_SPEED, mainSpeed)
+            putExtra(MixService.EXTRA_BG_SPEED, bgSpeed)
+            putExtra(MixService.EXTRA_MAIN_PITCH, mainPitch)
+            putExtra(MixService.EXTRA_BG_PITCH, bgPitch)
+            putExtra(MixService.EXTRA_MAIN_ECHO, mainEcho)
+            putExtra(MixService.EXTRA_BG_ECHO, bgEcho)
+            putExtra(MixService.EXTRA_FADE, binding.cbFade.isChecked)
+            putExtra(MixService.EXTRA_USE_FFMPEG, useFfmpeg)
         }
-
-        val codecArgs = if (outExt == "wav") {
-            arrayOf("-c:a", "pcm_s16le")
-        } else {
-            arrayOf("-c:a", "aac", "-b:a", "128k")
-        }
-
-        val args = arrayOf(
-            "-y",
-            "-i", main.absolutePath,
-            "-stream_loop", "-1",
-            "-i", bg.absolutePath,
-            "-filter_complex", filter,
-            "-map", "[a]"
-        ) + codecArgs + arrayOf("-shortest", outFile.absolutePath)
-
-        binding.tvStatus.text = "میکس فایل‌های طولانی / افکت‌ها... صبر کنید"
-
         try {
-            FFmpegKit.executeWithArgumentsAsync(args, { session ->
-                runOnUiThread {
-                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200) {
-                        finishMix(outFile, "")
-                    } else {
-                        // Fallback simple mix without advanced filters
-                        fallbackSimpleFFmpeg(main, bg, outFile)
-                    }
-                }
-            }, null, StatisticsCallback { stats ->
-                val t = stats.time
-                if (t > 0) {
-                    runOnUiThread {
-                        binding.tvStatus.text = "در حال میکس... ${t / 1000} ثانیه پردازش شده"
-                        binding.progressBar.isIndeterminate = false
-                        binding.progressBar.progress = ((t / 1000) % 100).toInt()
-                    }
-                }
-            })
+            startService(intent)
         } catch (e: Exception) {
-            // If FFmpeg native fails to load, fall back to Java
-            Toast.makeText(this, "FFmpeg در دسترس نیست، میکس ساده...", Toast.LENGTH_SHORT).show()
-            mixWithJava(main, bg)
+            finishMix(null, e.message ?: "شروع سرویس میکس ناموفق")
+            return
         }
-    }
 
-    private fun fallbackSimpleFFmpeg(main: File, bg: File, outFile: File) {
-        val args = arrayOf(
-            "-y",
-            "-i", main.absolutePath,
-            "-stream_loop", "-1",
-            "-i", bg.absolutePath,
-            "-filter_complex", "[0:a]volume=$mainVolume[a0];[1:a]volume=$bgVolume[a1];[a0][a1]amix=inputs=2:duration=first[a]",
-            "-map", "[a]",
-            "-c:a", "aac", "-b:a", "128k",
-            "-shortest", outFile.absolutePath
-        )
-        try {
-            FFmpegKit.executeWithArgumentsAsync(args, { session ->
-                runOnUiThread {
-                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200) {
-                        finishMix(outFile, "")
-                    } else {
-                        finishMix(null, "میکس ناموفق. فایل کوتاه‌تر را امتحان کنید.")
-                    }
+        // If mix process dies (native crash), we never get ResultReceiver — timeout recovers UI
+        mixTimeoutRunnable = Runnable {
+            if (isMixing) {
+                // Check if output appeared anyway
+                if (outFile.exists() && outFile.length() > 500) {
+                    finishMix(outFile, "")
+                } else {
+                    finishMix(null, "میکس قطع شد. دوباره با فایل کوتاه‌تر یا بدون افکت پیشرفته امتحان کنید.")
                 }
-            }, null, null)
-        } catch (e: Exception) {
-            finishMix(null, e.message ?: "خطای FFmpeg")
+            }
         }
+        // 15 min max for long files
+        uiHandler.postDelayed(mixTimeoutRunnable!!, 15 * 60 * 1000L)
+
+        // Status tick every 3s so user knows app is alive
+        var ticks = 0
+        val tick = object : Runnable {
+            override fun run() {
+                if (!isMixing) return
+                ticks++
+                binding.tvStatus.text = "در حال میکس... ${ticks * 3} ثانیه (منتظر بمانید)"
+                uiHandler.postDelayed(this, 3000)
+            }
+        }
+        uiHandler.postDelayed(tick, 3000)
     }
 
     private fun finishMix(result: File?, errorMsg: String) {
@@ -547,10 +455,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetAll() {
-        if (isMixing) {
-            try { FFmpegKit.cancel() } catch (_: Exception) {}
-            isMixing = false
-        }
+        isMixing = false
+        mixTimeoutRunnable?.let { uiHandler.removeCallbacks(it) }
         mainFile = null; bgFile = null
         mainFileName = ""; bgFileName = ""
         outputFile = null
@@ -658,14 +564,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveToDownloads() {
         val file = outputFile ?: return
-        val ext = file.extension.ifEmpty { "m4a" }
-        val mime = if (ext == "wav") "audio/wav" else "audio/mp4"
-        val displayName = "mixed_audio_${System.currentTimeMillis()}.$ext"
+        val displayName = "mixed_audio_${System.currentTimeMillis()}.m4a"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-                    put(MediaStore.Audio.Media.MIME_TYPE, mime)
+                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
                     put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     put(MediaStore.Audio.Media.IS_PENDING, 1)
                 }
@@ -696,7 +600,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         mediaPlayer?.release()
-        if (isMixing) try { FFmpegKit.cancel() } catch (_: Exception) {}
+        mixTimeoutRunnable?.let { uiHandler.removeCallbacks(it) }
         if (isRecording) {
             try { mediaRecorder?.stop() } catch (_: Exception) {}
             mediaRecorder?.release()
