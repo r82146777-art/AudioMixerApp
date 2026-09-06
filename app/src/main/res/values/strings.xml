@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">میکسر صوتی همدل</string>
+    <string name="app_name">میکسر</string>
     <string name="select_main_file">انتخاب فایل اصلی</string>
     <string name="select_bg_file">انتخاب فایل پس‌زمینه</string>
     <string name="main_volume">صدای فایل اصلی</string>
