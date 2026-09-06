@@ -12,7 +12,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.NumberPicker
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,7 +31,7 @@ import kotlin.math.sin
 
 data class EffectItem(
     val name: String,
-    val source: String,
+    val source: String, // catalog | local | online
     val pathOrUrl: String
 )
 
@@ -44,20 +43,13 @@ class EffectsActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var tvHint: TextView
 
-    private val allEffects = mutableListOf<EffectItem>()
     private val shownEffects = mutableListOf<EffectItem>()
     private var player: MediaPlayer? = null
 
     private val prefs by lazy { getSharedPreferences("audiomixer_prefs", Context.MODE_PRIVATE) }
 
-    private val onlineCatalog = listOf(
-        EffectItem("Sample music 1", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
-        EffectItem("Sample music 2", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
-        EffectItem("Test MP3", "online", "https://archive.org/download/testmp3testfile/mpthreetest.mp3")
-    )
-
-    /** نام‌های قابل جستجو — فایل کوتاه آفلاین ساخته می‌شود */
-    private val effectNames = listOf(
+    /** فقط نام در کاتالوگ — فایل بعد از دکمه دانلود ساخته/ذخیره می‌شود */
+    private val catalogNames = listOf(
         "در", "در باز", "در بسته", "کوبه در", "زنگ در",
         "باد", "باد شدید", "باد ملایم", "طوفان",
         "باران", "باران ملایم", "باران شدید", "رعد", "رعد و برق",
@@ -76,10 +68,16 @@ class EffectsActivity : AppCompatActivity() {
         "جنگل", "حشره", "جیرجیرک",
         "قطار", "هواپیما", "هلیکوپتر",
         "کف زدن", "تشویق", "سوت تماشاگر",
-        "پچ پچ", "همهمه", "سکوت شکسته",
+        "پچ پچ", "همهمه",
         "پیانو", "گیتار", "ویولن", "درام",
         "هوه", "سوئیپ", "کلیک", "پاپ",
         "زنگ کلیسا", "ناقوس", "آژیر"
+    )
+
+    private val onlineCatalog = listOf(
+        EffectItem("Sample 1", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
+        EffectItem("Sample 2", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
+        EffectItem("Test MP3", "online", "https://archive.org/download/testmp3testfile/mpthreetest.mp3")
     )
 
     private val pickEffectLauncher = registerForActivityResult(
@@ -90,7 +88,7 @@ class EffectsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_effects)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "افکت‌های صوتی (لایه زمانی)"
+        supportActionBar?.title = "افکت‌های صوتی"
 
         etSearch = findViewById(R.id.etSearch)
         btnSearch = findViewById(R.id.btnSearch)
@@ -98,82 +96,255 @@ class EffectsActivity : AppCompatActivity() {
         listView = findViewById(R.id.listEffects)
         tvHint = findViewById(R.id.tvHint)
 
-        ensureBuiltinEffects()
         rebuildList("")
-
         btnSearch.setOnClickListener { rebuildList(etSearch.text.toString().trim()) }
         btnAddLocal.setOnClickListener { pickEffectLauncher.launch(arrayOf("audio/*")) }
     }
 
     private fun rebuildList(query: String) {
-        allEffects.clear()
-        allEffects.addAll(loadLocalEffects())
-        // offline generated catalog entries (searchable)
-        for (name in effectNames) {
-            val path = ensureNamedEffect(name)
-            if (path != null) allEffects.add(EffectItem(name, "local", path))
-        }
-        allEffects.addAll(onlineCatalog)
-        // unique by name+path
-        val seen = HashSet<String>()
         shownEffects.clear()
         val q = query.lowercase()
-        for (e in allEffects) {
-            val key = e.name + "|" + e.pathOrUrl
-            if (!seen.add(key)) continue
+
+        // downloaded / local first
+        for (e in loadLocalEffects()) {
             if (q.isEmpty() || e.name.lowercase().contains(q)) shownEffects.add(e)
         }
+
+        // catalog names (not downloaded yet)
+        for (name in catalogNames) {
+            if (q.isNotEmpty() && !name.lowercase().contains(q)) continue
+            if (isDownloaded(name)) continue
+            shownEffects.add(EffectItem(name, "catalog", ""))
+        }
+
+        for (e in onlineCatalog) {
+            if (q.isEmpty() || e.name.lowercase().contains(q)) shownEffects.add(e)
+        }
+
         refreshList()
         if (shownEffects.isEmpty()) {
             Toast.makeText(this, "افکتی پیدا نشد", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun ensureNamedEffect(name: String): String? {
+    private fun isDownloaded(name: String): Boolean {
         val dir = File(filesDir, "effects")
-        if (!dir.exists()) dir.mkdirs()
-        val id = "fx_" + name.hashCode().toString().replace('-', 'n')
-        val f = File(dir, "$id.wav")
-        if (!f.exists() || f.length() < 100L) {
-            try {
-                val freq = 200.0 + (kotlin.math.abs(name.hashCode()) % 1500)
-                if (name.contains("باد") || name.contains("باران") || name.contains("نویز") || name.contains("همهمه")) {
-                    writeNoiseWav(f, 0.7)
-                } else {
-                    writeToneWav(f, freq, 0.45)
-                }
-                File(dir, "$id.txt").writeText(name)
-            } catch (_: Exception) {
-                return null
-            }
-        }
-        return if (f.exists()) f.absolutePath else null
+        if (!dir.exists()) return false
+        val id = effectId(name)
+        return File(dir, "$id.wav").exists() || File(dir, "$id.mp3").exists()
     }
 
-    private fun ensureBuiltinEffects() {
+    private fun effectId(name: String): String {
+        return "fx_" + name.hashCode().toString().replace('-', 'n')
+    }
+
+    private fun loadLocalEffects(): List<EffectItem> {
         val dir = File(filesDir, "effects")
-        if (!dir.exists()) dir.mkdirs()
-        val builtins = listOf(
-            Triple("beep", "بوق", 880.0),
-            Triple("ring", "زنگ", 1200.0),
-            Triple("bass", "بم", 220.0),
-            Triple("whistle", "سوت", 1760.0)
-        )
-        for ((fileId, label, freq) in builtins) {
-            val f = File(dir, "builtin_$fileId.wav")
-            if (!f.exists() || f.length() < 100L) {
-                try {
-                    writeToneWav(f, freq, 0.6)
-                    File(dir, "builtin_$fileId.txt").writeText(label)
-                } catch (_: Exception) {}
+        if (!dir.exists()) return emptyList()
+        return dir.listFiles()?.filter {
+            it.isFile && it.extension.lowercase() in listOf("wav", "mp3", "m4a", "audio") && it.length() > 100L
+        }?.map { f ->
+            val base = f.nameWithoutExtension
+            val labelFile = File(dir, "$base.txt")
+            val label = if (labelFile.exists()) labelFile.readText().trim() else base
+            EffectItem(label.ifBlank { f.name }, "local", f.absolutePath)
+        } ?: emptyList()
+    }
+
+    private fun refreshList() {
+        val nOverlay = loadOverlayCount()
+        tvHint.text = "نمایش: ${shownEffects.size} | زمان‌بندی‌شده برای میکس: $nOverlay\nاول دانلود کنید، بعد با زمان روی صدای اصلی بگذارید"
+        listView.adapter = object : BaseAdapter() {
+            override fun getCount() = shownEffects.size
+            override fun getItem(p: Int) = shownEffects[p]
+            override fun getItemId(p: Int) = p.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val view = convertView ?: LayoutInflater.from(this@EffectsActivity)
+                    .inflate(R.layout.item_effect, parent, false)
+                val item = shownEffects[position]
+                view.findViewById<TextView>(R.id.tvEffectName).text = item.name
+                view.findViewById<TextView>(R.id.tvEffectSource).text = when (item.source) {
+                    "local" -> "دانلود شده — آماده استفاده"
+                    "catalog" -> "نیاز به دانلود"
+                    else -> "آنلاین — نیاز به اینترنت"
+                }
+                val btnPlay = view.findViewById<Button>(R.id.btnPlayEffect)
+                val btnSave = view.findViewById<Button>(R.id.btnSaveEffect)
+                val btnUse = view.findViewById<Button>(R.id.btnUseEffect)
+
+                btnSave.text = if (item.source == "local") "دانلود شده" else "دانلود"
+                btnUse.text = "افزودن با زمان"
+
+                btnPlay.setOnClickListener {
+                    when (item.source) {
+                        "local" -> playLocal(item.pathOrUrl)
+                        "catalog" -> Toast.makeText(this@EffectsActivity, "اول دانلود کنید", Toast.LENGTH_SHORT).show()
+                        else -> previewOnline(item)
+                    }
+                }
+                btnSave.setOnClickListener {
+                    if (item.source == "local") {
+                        Toast.makeText(this@EffectsActivity, "قبلاً دانلود شده", Toast.LENGTH_SHORT).show()
+                    } else if (item.source == "catalog") {
+                        downloadCatalogEffect(item.name)
+                    } else {
+                        downloadOnline(item)
+                    }
+                }
+                btnUse.setOnClickListener {
+                    when (item.source) {
+                        "local" -> showTimeDialog(item.pathOrUrl, item.name)
+                        "catalog" -> Toast.makeText(this@EffectsActivity, "اول دکمه دانلود را بزنید", Toast.LENGTH_SHORT).show()
+                        else -> {
+                            Toast.makeText(this@EffectsActivity, "ابتدا دانلود کنید", Toast.LENGTH_SHORT).show()
+                            downloadOnline(item)
+                        }
+                    }
+                }
+                return view
             }
         }
-        val noise = File(dir, "builtin_noise.wav")
-        if (!noise.exists() || noise.length() < 100L) {
-            try {
-                writeNoiseWav(noise, 0.8)
-                File(dir, "builtin_noise.txt").writeText("نویز")
-            } catch (_: Exception) {}
+    }
+
+    /** دانلود کاتالوگ = ساخت فایل کوتاه داخل برنامه (بدون نیاز به اینترنت) */
+    private fun downloadCatalogEffect(name: String) {
+        Toast.makeText(this, "در حال آماده‌سازی افکت...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val path = withContext(Dispatchers.IO) {
+                try {
+                    val dir = File(filesDir, "effects")
+                    if (!dir.exists()) dir.mkdirs()
+                    val id = effectId(name)
+                    val f = File(dir, "$id.wav")
+                    val freq = 200.0 + (kotlin.math.abs(name.hashCode()) % 1500)
+                    if (name.contains("باد") || name.contains("باران") || name.contains("همهمه") || name.contains("طوفان")) {
+                        writeNoiseWav(f, 0.7)
+                    } else {
+                        writeToneWav(f, freq, 0.45)
+                    }
+                    File(dir, "$id.txt").writeText(name)
+                    if (f.exists() && f.length() > 100L) f.absolutePath else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            if (path != null) {
+                Toast.makeText(this@EffectsActivity, "دانلود و ذخیره شد", Toast.LENGTH_SHORT).show()
+                rebuildList(etSearch.text.toString().trim())
+            } else {
+                Toast.makeText(this@EffectsActivity, "خطا در آماده‌سازی افکت", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun downloadOnline(item: EffectItem) {
+        Toast.makeText(this, "در حال دانلود از اینترنت...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    val dir = File(filesDir, "effects")
+                    dir.mkdirs()
+                    val out = File(dir, "dl_${System.currentTimeMillis()}.mp3")
+                    val f = downloadToFile(item.pathOrUrl, out)
+                    if (f != null) {
+                        File(dir, f.nameWithoutExtension + ".txt").writeText(item.name)
+                        true
+                    } else false
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (ok) {
+                Toast.makeText(this@EffectsActivity, "ذخیره شد", Toast.LENGTH_SHORT).show()
+                rebuildList(etSearch.text.toString().trim())
+            } else {
+                Toast.makeText(this@EffectsActivity, "دانلود ناموفق — اینترنت را چک کنید", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun previewOnline(item: EffectItem) {
+        Toast.makeText(this, "آماده‌سازی پخش...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val tmp = withContext(Dispatchers.IO) {
+                downloadToFile(item.pathOrUrl, File(cacheDir, "preview_${System.currentTimeMillis()}.mp3"))
+            }
+            if (tmp != null) playLocal(tmp.absolutePath)
+            else Toast.makeText(this@EffectsActivity, "پخش ممکن نیست", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showTimeDialog(path: String, name: String) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
+        }
+        layout.addView(TextView(this).apply {
+            text = "زمان پخش افکت «$name» روی فایل اصلی\nساعت، دقیقه، ثانیه را وارد کنید:"
+        })
+        val etH = EditText(this).apply { hint = "ساعت (۰)"; setText("0"); inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        val etM = EditText(this).apply { hint = "دقیقه (۰)"; setText("0"); inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        val etS = EditText(this).apply { hint = "ثانیه (۰)"; setText("5"); inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        layout.addView(etH)
+        layout.addView(etM)
+        layout.addView(etS)
+        layout.addView(TextView(this).apply {
+            text = "می‌توانید چند بار همین افکت را با زمان‌های مختلف اضافه کنید."
+        })
+
+        AlertDialog.Builder(this)
+            .setTitle("زمان افکت")
+            .setView(layout)
+            .setPositiveButton("تأیید") { _, _ ->
+                val h = etH.text.toString().toIntOrNull() ?: 0
+                val m = etM.text.toString().toIntOrNull() ?: 0
+                val s = etS.text.toString().toIntOrNull() ?: 0
+                val ms = ((h * 3600L) + (m * 60L) + s) * 1000L
+                appendOverlay(path, ms)
+                Toast.makeText(this, "افکت در زمان ${h}:${m}:${s} اضافه شد", Toast.LENGTH_SHORT).show()
+                refreshList()
+            }
+            .setNeutralButton("افزودن زمان دیگر") { _, _ ->
+                val h = etH.text.toString().toIntOrNull() ?: 0
+                val m = etM.text.toString().toIntOrNull() ?: 0
+                val s = etS.text.toString().toIntOrNull() ?: 0
+                val ms = ((h * 3600L) + (m * 60L) + s) * 1000L
+                appendOverlay(path, ms)
+                Toast.makeText(this, "اضافه شد — زمان بعدی را وارد کنید", Toast.LENGTH_SHORT).show()
+                showTimeDialog(path, name)
+            }
+            .setNegativeButton("انصراف", null)
+            .show()
+    }
+
+    private fun appendOverlay(path: String, ms: Long) {
+        val cur = prefs.getString(KEY_OVERLAYS, "") ?: ""
+        val parts = ArrayList<String>()
+        if (cur.isNotBlank()) parts.addAll(cur.split(';').filter { it.isNotBlank() })
+        parts.add("$path|$ms")
+        prefs.edit().putString(KEY_OVERLAYS, parts.joinToString(";")).apply()
+    }
+
+    private fun loadOverlayCount(): Int {
+        val cur = prefs.getString(KEY_OVERLAYS, "") ?: ""
+        if (cur.isBlank()) return 0
+        return cur.split(';').count { it.isNotBlank() }
+    }
+
+    private fun playLocal(path: String) {
+        try {
+            player?.release()
+            player = MediaPlayer().apply {
+                setDataSource(path)
+                setOnPreparedListener { start() }
+                setOnErrorListener { _, _, _ ->
+                    Toast.makeText(this@EffectsActivity, "پخش ممکن نیست", Toast.LENGTH_SHORT).show()
+                    true
+                }
+                prepareAsync()
+            }
+        } catch (_: Exception) {
+            Toast.makeText(this, "خطا در پخش", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -244,239 +415,6 @@ class EffectsActivity : AppCompatActivity() {
         out.write((v shr 8) and 0xff)
     }
 
-    private fun loadLocalEffects(): List<EffectItem> {
-        val dir = File(filesDir, "effects")
-        if (!dir.exists()) dir.mkdirs()
-        return dir.listFiles()?.filter {
-            it.isFile && it.extension.lowercase() in listOf("wav", "mp3", "m4a", "audio") && it.length() > 100L
-        }?.map { f ->
-            val base = f.nameWithoutExtension
-            val labelFile = File(dir, "$base.txt")
-            val label = if (labelFile.exists()) labelFile.readText().trim()
-            else base.removePrefix("builtin_").replace('_', ' ')
-            EffectItem(label.ifBlank { f.name }, "local", f.absolutePath)
-        } ?: emptyList()
-    }
-
-    private fun refreshList() {
-        val overlays = loadOverlayCount()
-        tvHint.text = "تعداد نمایش: ${shownEffects.size} | افکت‌های زمان‌بندی‌شده: $overlays"
-        listView.adapter = object : BaseAdapter() {
-            override fun getCount() = shownEffects.size
-            override fun getItem(p: Int) = shownEffects[p]
-            override fun getItemId(p: Int) = p.toLong()
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-                val view = convertView ?: LayoutInflater.from(this@EffectsActivity)
-                    .inflate(R.layout.item_effect, parent, false)
-                val item = shownEffects[position]
-                view.findViewById<TextView>(R.id.tvEffectName).text = item.name
-                view.findViewById<TextView>(R.id.tvEffectSource).text =
-                    if (item.source == "local") "لایه روی صدای اصلی (آفلاین)" else "آنلاین"
-                view.findViewById<Button>(R.id.btnPlayEffect).setOnClickListener { playEffect(item) }
-                view.findViewById<Button>(R.id.btnSaveEffect).setOnClickListener {
-                    if (item.source == "local") {
-                        Toast.makeText(this@EffectsActivity, "آماده استفاده است", Toast.LENGTH_SHORT).show()
-                    } else downloadAndSave(item)
-                }
-                view.findViewById<Button>(R.id.btnUseEffect).text = "افزودن با زمان"
-                view.findViewById<Button>(R.id.btnUseEffect).setOnClickListener {
-                    ensureLocalThenAdd(item)
-                }
-                return view
-            }
-        }
-    }
-
-    private fun ensureLocalThenAdd(item: EffectItem) {
-        if (item.source == "local") {
-            showTimeDialog(item.pathOrUrl, item.name)
-            return
-        }
-        Toast.makeText(this, "دانلود برای استفاده...", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val path = withContext(Dispatchers.IO) {
-                val dir = File(filesDir, "effects")
-                dir.mkdirs()
-                val out = File(dir, "dl_${System.currentTimeMillis()}.mp3")
-                if (downloadToFile(item.pathOrUrl, out) != null) out.absolutePath else null
-            }
-            if (path != null) showTimeDialog(path, item.name)
-            else Toast.makeText(this@EffectsActivity, "دانلود ناموفق", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun showTimeDialog(path: String, name: String) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 24, 40, 24)
-        }
-        val info = TextView(this).apply {
-            text = "زمان پخش افکت «$name» روی فایل اصلی:\nساعت : دقیقه : ثانیه"
-        }
-        layout.addView(info)
-
-        fun np(max: Int, value: Int): NumberPicker = NumberPicker(this).apply {
-            minValue = 0
-            maxValue = max
-            this.value = value
-            wrapSelectorWheel = true
-        }
-        val hour = np(5, 0)
-        val min = np(59, 0)
-        val sec = np(59, 0)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(hour)
-        row.addView(min)
-        row.addView(sec)
-        layout.addView(row)
-
-        val timesPreview = TextView(this).apply { text = "زمان‌های فعلی این افزودن: (هنوز خالی)" }
-        layout.addView(timesPreview)
-        val pending = ArrayList<Long>()
-
-        fun refreshPreview() {
-            timesPreview.text = if (pending.isEmpty()) "زمان‌های این افزودن: (خالی)"
-            else "زمان‌ها: " + pending.joinToString { ms ->
-                val s = ms / 1000
-                String.format("%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
-            }
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("زمان افکت")
-            .setView(layout)
-            .setPositiveButton("تأیید و افزودن") { _, _ ->
-                if (pending.isEmpty()) {
-                    val ms = ((hour.value * 3600L) + (min.value * 60L) + sec.value) * 1000L
-                    pending.add(ms)
-                }
-                appendOverlays(path, pending)
-                Toast.makeText(this, "افکت با ${pending.size} زمان اضافه شد", Toast.LENGTH_SHORT).show()
-                refreshList()
-            }
-            .setNeutralButton("افزودن این زمان") { dialog, _ ->
-                val ms = ((hour.value * 3600L) + (min.value * 60L) + sec.value) * 1000L
-                pending.add(ms)
-                refreshPreview()
-                // keep dialog open roughly by showing again
-                dialog.dismiss()
-                showTimeDialogContinue(path, name, pending)
-            }
-            .setNegativeButton("انصراف", null)
-            .show()
-    }
-
-    private fun showTimeDialogContinue(path: String, name: String, pending: ArrayList<Long>) {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 24, 40, 24)
-        }
-        layout.addView(TextView(this).apply {
-            text = "افکت «$name» — زمان بعدی (ساعت:دقیقه:ثانیه)\nزمان‌های ثبت‌شده: " +
-                    pending.joinToString { ms ->
-                        val s = ms / 1000
-                        String.format("%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
-                    }
-        })
-        fun np(max: Int, value: Int) = NumberPicker(this).apply {
-            minValue = 0; maxValue = max; this.value = value
-        }
-        val hour = np(5, 0); val min = np(59, 0); val sec = np(59, 0)
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(hour); row.addView(min); row.addView(sec)
-        layout.addView(row)
-        AlertDialog.Builder(this)
-            .setTitle("افزودن زمان جدید")
-            .setView(layout)
-            .setPositiveButton("تأیید نهایی") { _, _ ->
-                appendOverlays(path, pending)
-                Toast.makeText(this, "ذخیره شد (${pending.size} زمان)", Toast.LENGTH_SHORT).show()
-                refreshList()
-            }
-            .setNeutralButton("+ زمان دیگر") { d, _ ->
-                pending.add(((hour.value * 3600L) + (min.value * 60L) + sec.value) * 1000L)
-                d.dismiss()
-                showTimeDialogContinue(path, name, pending)
-            }
-            .setNegativeButton("انصراف", null)
-            .show()
-    }
-
-    private fun appendOverlays(path: String, timesMs: List<Long>) {
-        val cur = prefs.getString(KEY_OVERLAYS, "") ?: ""
-        val parts = ArrayList<String>()
-        if (cur.isNotBlank()) parts.addAll(cur.split(';').filter { it.isNotBlank() })
-        for (ms in timesMs) {
-            parts.add("$path|$ms")
-        }
-        prefs.edit().putString(KEY_OVERLAYS, parts.joinToString(";")).apply()
-    }
-
-    private fun loadOverlayCount(): Int {
-        val cur = prefs.getString(KEY_OVERLAYS, "") ?: ""
-        if (cur.isBlank()) return 0
-        return cur.split(';').count { it.isNotBlank() }
-    }
-
-    private fun playEffect(item: EffectItem) {
-        try {
-            player?.release()
-            player = null
-            if (item.source == "local") playLocal(item.pathOrUrl)
-            else {
-                Toast.makeText(this, "آماده‌سازی پخش...", Toast.LENGTH_SHORT).show()
-                lifecycleScope.launch {
-                    val tmp = withContext(Dispatchers.IO) {
-                        downloadToFile(item.pathOrUrl, File(cacheDir, "preview_${System.currentTimeMillis()}.mp3"))
-                    }
-                    if (tmp != null) playLocal(tmp.absolutePath)
-                    else Toast.makeText(this@EffectsActivity, "پخش ممکن نیست", Toast.LENGTH_LONG).show()
-                }
-            }
-        } catch (_: Exception) {
-            Toast.makeText(this, "خطا در پخش", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun playLocal(path: String) {
-        try {
-            player?.release()
-            player = MediaPlayer().apply {
-                setDataSource(path)
-                setOnPreparedListener { start() }
-                setOnErrorListener { _, _, _ ->
-                    Toast.makeText(this@EffectsActivity, "پخش ممکن نیست", Toast.LENGTH_SHORT).show()
-                    true
-                }
-                prepareAsync()
-            }
-        } catch (_: Exception) {
-            Toast.makeText(this, "خطا در پخش", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun downloadAndSave(item: EffectItem) {
-        Toast.makeText(this, "در حال دانلود...", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                try {
-                    val dir = File(filesDir, "effects")
-                    dir.mkdirs()
-                    val out = File(dir, "dl_${System.currentTimeMillis()}.mp3")
-                    downloadToFile(item.pathOrUrl, out) != null
-                } catch (_: Exception) {
-                    false
-                }
-            }
-            if (ok) {
-                Toast.makeText(this@EffectsActivity, "ذخیره شد", Toast.LENGTH_SHORT).show()
-                rebuildList(etSearch.text.toString().trim())
-            } else {
-                Toast.makeText(this@EffectsActivity, "دانلود ناموفق", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     private fun downloadToFile(urlStr: String, out: File): File? {
         return try {
             var current = urlStr
@@ -523,7 +461,7 @@ class EffectsActivity : AppCompatActivity() {
                 FileOutputStream(out).use { output -> input.copyTo(output) }
             }
             if (out.exists() && out.length() > 0L) {
-                Toast.makeText(this, "افکت اضافه شد", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "افکت از گوشی اضافه شد", Toast.LENGTH_SHORT).show()
                 rebuildList(etSearch.text.toString().trim())
             }
         } catch (e: Exception) {
