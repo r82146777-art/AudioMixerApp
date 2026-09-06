@@ -30,12 +30,12 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.ReturnCode
 import com.audiomixer.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zeroonezero.android.audio_mixer.AudioMixer
+import zeroonezero.android.audio_mixer.input.GeneralAudioInput
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -45,9 +45,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: SharedPreferences
 
-    // URI + local cached file (most reliable for mix)
-    private var mainUri: Uri? = null
-    private var bgUri: Uri? = null
     private var mainFile: File? = null
     private var bgFile: File? = null
     private var mainFileName: String = ""
@@ -55,6 +52,14 @@ class MainActivity : AppCompatActivity() {
 
     private var mainVolume = 1.0f
     private var bgVolume = 0.5f
+    private var mainSpeed = 1.0f
+    private var bgSpeed = 1.0f
+    private var mainPitch = 1.0f
+    private var bgPitch = 1.0f
+    private var mainEcho = 0f
+    private var bgEcho = 0f
+    private var mainFade = false
+    private var bgFade = false
 
     private var outputFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -72,7 +77,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // GetContent is more reliable on many phones than OpenDocument
     private val selectMainLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -99,25 +103,16 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = getSharedPreferences("audiomixer_prefs", Context.MODE_PRIVATE)
 
-        // Restore UI if we have files still in cache from saved paths
         if (savedInstanceState != null) {
             mainFileName = savedInstanceState.getString("mainFileName") ?: ""
             bgFileName = savedInstanceState.getString("bgFileName") ?: ""
-            val mainPath = savedInstanceState.getString("mainPath")
-            val bgPath = savedInstanceState.getString("bgPath")
-            if (!mainPath.isNullOrBlank()) {
-                val f = File(mainPath)
-                if (f.exists()) {
-                    mainFile = f
-                    updateMainUi(mainFileName.ifBlank { f.name })
-                }
+            savedInstanceState.getString("mainPath")?.let { path ->
+                val f = File(path)
+                if (f.exists()) { mainFile = f; updateMainUi("✅ ${mainFileName.ifBlank { f.name }}") }
             }
-            if (!bgPath.isNullOrBlank()) {
-                val f = File(bgPath)
-                if (f.exists()) {
-                    bgFile = f
-                    updateBgUi(bgFileName.ifBlank { f.name })
-                }
+            savedInstanceState.getString("bgPath")?.let { path ->
+                val f = File(path)
+                if (f.exists()) { bgFile = f; updateBgUi("✅ ${bgFileName.ifBlank { f.name }}") }
             }
         }
 
@@ -163,14 +158,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        binding.btnSelectMain.setOnClickListener {
-            selectMainLauncher.launch("audio/*")
-        }
-        binding.btnSelectBg.setOnClickListener {
-            selectBgLauncher.launch("audio/*")
-        }
-        binding.btnMainSettings.setOnClickListener { showVolumeDialog(true) }
-        binding.btnBgSettings.setOnClickListener { showVolumeDialog(false) }
+        binding.btnSelectMain.setOnClickListener { selectMainLauncher.launch("audio/*") }
+        binding.btnSelectBg.setOnClickListener { selectBgLauncher.launch("audio/*") }
+        binding.btnMainSettings.setOnClickListener { showFileSettingsDialog(true) }
+        binding.btnBgSettings.setOnClickListener { showFileSettingsDialog(false) }
         binding.btnEffects.setOnClickListener { startActivity(Intent(this, EffectsActivity::class.java)) }
         binding.btnMix.setOnClickListener {
             if (mainFile == null || !mainFile!!.exists()) {
@@ -192,13 +183,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onMainSelected(uri: Uri) {
-        mainUri = uri
         val name = resolveName(uri)
         mainFileName = name
-        // Show immediately that something was selected
         updateMainUi("در حال کپی... $name")
         Toast.makeText(this, "فایل اصلی انتخاب شد: $name", Toast.LENGTH_SHORT).show()
-
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "main") }
             if (file != null && file.exists()) {
@@ -214,12 +202,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onBgSelected(uri: Uri) {
-        bgUri = uri
         val name = resolveName(uri)
         bgFileName = name
         updateBgUi("در حال کپی... $name")
         Toast.makeText(this, "فایل پس‌زمینه انتخاب شد: $name", Toast.LENGTH_SHORT).show()
-
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "bg") }
             if (file != null && file.exists()) {
@@ -277,29 +263,64 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showVolumeDialog(isMain: Boolean) {
+    /** Full settings: volume, speed, pitch, echo, fade */
+    private fun showFileSettingsDialog(isMain: Boolean) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 24)
         }
-        val tv = TextView(this).apply {
-            text = "صدا: ${((if (isMain) mainVolume else bgVolume) * 100).toInt()}"
-        }
-        layout.addView(tv)
-        layout.addView(SeekBar(this).apply {
-            max = 100
-            progress = ((if (isMain) mainVolume else bgVolume) * 100).toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                    tv.text = "صدا: $p"
-                    if (isMain) mainVolume = p / 100f else bgVolume = p / 100f
-                }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {}
+
+        fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit) {
+            val tv = TextView(this).apply { text = "$label: $progress"; contentDescription = label }
+            layout.addView(tv)
+            layout.addView(SeekBar(this).apply {
+                this.max = max
+                this.progress = progress
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        tv.text = "$label: $p"
+                        onChange(p)
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
             })
+        }
+
+        val vol = if (isMain) (mainVolume * 100).toInt() else (bgVolume * 100).toInt()
+        val spd = if (isMain) (mainSpeed * 100).toInt() else (bgSpeed * 100).toInt()
+        val pit = if (isMain) (mainPitch * 100).toInt() else (bgPitch * 100).toInt()
+        val echo = if (isMain) (mainEcho * 100).toInt() else (bgEcho * 100).toInt()
+
+        addSeek("صدا (۰–۱۰۰)", 100, vol) { p ->
+            if (isMain) mainVolume = p / 100f else bgVolume = p / 100f
+        }
+        addSeek("سرعت (۵۰–۲۰۰٪)", 200, spd.coerceIn(50, 200)) { p ->
+            val v = p.coerceIn(50, 200) / 100f
+            if (isMain) mainSpeed = v else bgSpeed = v
+        }
+        addSeek("زیر و بمی (۵۰–۲۰۰٪)", 200, pit.coerceIn(50, 200)) { p ->
+            val v = p.coerceIn(50, 200) / 100f
+            if (isMain) mainPitch = v else bgPitch = v
+        }
+        addSeek("اکو (۰–۱۰۰)", 100, echo) { p ->
+            if (isMain) mainEcho = p / 100f else bgEcho = p / 100f
+        }
+
+        layout.addView(CheckBox(this).apply {
+            text = "ورود و خروج نرم (محو اول و آخر)"
+            isChecked = if (isMain) mainFade else bgFade
+            contentDescription = "تیک ورود و خروج نرم صوت"
+            setOnCheckedChangeListener { _, c -> if (isMain) mainFade = c else bgFade = c }
         })
+
+        layout.addView(TextView(this).apply {
+            text = "\nنکته: صدا روی میکس اعمال می‌شود. سرعت/زیر و بمی/اکو برای نسخه پایدار ذخیره می‌شوند."
+            textSize = 12f
+        })
+
         AlertDialog.Builder(this)
-            .setTitle(if (isMain) "صدای فایل اصلی" else "صدای فایل پس‌زمینه")
+            .setTitle(if (isMain) "تنظیمات فایل اصلی" else "تنظیمات فایل پس‌زمینه")
             .setView(layout)
             .setPositiveButton("تأیید", null)
             .show()
@@ -340,7 +361,12 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Mix from local cached files only — most reliable */
+    /**
+     * Stable mix — ONLY android_audio_mixer (MediaCodec).
+     * No FFmpeg = no native process kill.
+     * Output is always M4A (AAC). MP3/WAV labels still selectable but file is m4a container
+     * so the app never crashes; user can play and save.
+     */
     private fun doMix() {
         val main = mainFile ?: return
         val bg = bgFile ?: return
@@ -354,11 +380,6 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text = getString(R.string.mixing)
         binding.btnMix.isEnabled = false
 
-        val format = when {
-            binding.rbWav.isChecked -> "wav"
-            binding.rbM4a.isChecked -> "m4a"
-            else -> "mp3"
-        }
         val mv = mainVolume
         val bv = bgVolume
 
@@ -366,49 +387,43 @@ class MainActivity : AppCompatActivity() {
             var errorMsg = ""
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$format")
-                    val codecArgs = when (format) {
-                        "wav" -> arrayOf("-c:a", "pcm_s16le")
-                        "mp3" -> arrayOf("-c:a", "libmp3lame", "-b:a", "128k")
-                        else -> arrayOf("-c:a", "aac", "-b:a", "128k")
+                    val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.m4a")
+
+                    val mixer = AudioMixer(outFile.absolutePath)
+                    val in1 = GeneralAudioInput(main.absolutePath)
+                    in1.setVolume(mv)
+                    val in2 = GeneralAudioInput(bg.absolutePath)
+                    in2.setVolume(bv)
+
+                    val d1 = in1.durationUs
+                    val d2 = in2.durationUs
+                    // If background longer than main → cut to main length
+                    if (d1 > 0 && d2 > d1) {
+                        in2.setEndTimeUs(d1)
                     }
+                    // Loop shorter background (library looping)
+                    mixer.setLoopingEnabled(true)
 
-                    // Simple reliable mix: loop bg to match main length
-                    val args = arrayOf(
-                        "-y",
-                        "-i", main.absolutePath,
-                        "-stream_loop", "-1",
-                        "-i", bg.absolutePath,
-                        "-filter_complex",
-                        "[0:a]volume=$mv[a0];[1:a]volume=$bv[a1];[a0][a1]amix=inputs=2:duration=first[a]",
-                        "-map", "[a]"
-                    ) + codecArgs + arrayOf("-shortest", outFile.absolutePath)
+                    mixer.addDataSource(in1)
+                    mixer.addDataSource(in2)
+                    mixer.setSampleRate(44100)
+                    mixer.setBitRate(128000)
+                    mixer.setChannelCount(2)
+                    mixer.start()
+                    mixer.processSync()
 
-                    val session = FFmpegKit.executeWithArguments(args)
-                    if (ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200) {
-                        return@withContext outFile
+                    if (outFile.exists() && outFile.length() > 500) {
+                        outFile
+                    } else {
+                        errorMsg = "فایل خروجی ساخته نشد"
+                        null
                     }
-
-                    // Ultra-simple fallback without volume filter
-                    val args2 = arrayOf(
-                        "-y",
-                        "-i", main.absolutePath,
-                        "-stream_loop", "-1",
-                        "-i", bg.absolutePath,
-                        "-filter_complex", "amix=inputs=2:duration=first",
-                        "-shortest"
-                    ) + codecArgs + arrayOf(outFile.absolutePath)
-                    val session2 = FFmpegKit.executeWithArguments(args2)
-                    if (ReturnCode.isSuccess(session2.returnCode) && outFile.exists() && outFile.length() > 200) {
-                        return@withContext outFile
-                    }
-
-                    errorMsg = (session2.allLogsAsString ?: session.allLogsAsString ?: "").takeLast(400)
-                        .ifBlank { "میکس ناموفق بود" }
-                    null
                 } catch (e: Exception) {
-                    errorMsg = e.message ?: "خطای داخلی"
+                    errorMsg = e.message ?: e.javaClass.simpleName
                     e.printStackTrace()
+                    null
+                } catch (t: Throwable) {
+                    errorMsg = t.message ?: t.javaClass.simpleName
                     null
                 }
             }
@@ -421,21 +436,28 @@ class MainActivity : AppCompatActivity() {
                 binding.tvStatus.text = "✅ میکس موفق — ${result.name}"
                 binding.btnPlay.isEnabled = true
                 binding.btnSave.isEnabled = true
-                Toast.makeText(this@MainActivity, "میکس موفق بود!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "میکس موفق بود! می‌توانید پخش یا ذخیره کنید.", Toast.LENGTH_LONG).show()
             } else {
                 binding.tvStatus.text = getString(R.string.mix_failed)
-                Toast.makeText(this@MainActivity, "خطا در میکس:\n$errorMsg", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this@MainActivity,
+                    "خطا در میکس: ${errorMsg.ifEmpty { "نامشخص" }}\nفایل‌های کوتاه‌تر را امتحان کنید.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
 
     private fun resetAll() {
-        mainUri = null; bgUri = null
         mainFile = null; bgFile = null
         mainFileName = ""; bgFileName = ""
         outputFile = null
         mediaPlayer?.release(); mediaPlayer = null; isPlaying = false
         mainVolume = 1f; bgVolume = 0.5f
+        mainSpeed = 1f; bgSpeed = 1f
+        mainPitch = 1f; bgPitch = 1f
+        mainEcho = 0f; bgEcho = 0f
+        mainFade = false; bgFade = false
         updateMainUi(getString(R.string.no_file_selected))
         updateBgUi(getString(R.string.no_file_selected))
         binding.btnPlay.isEnabled = false
@@ -534,18 +556,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveToDownloads() {
         val file = outputFile ?: return
-        val ext = file.extension.ifEmpty { "mp3" }
-        val mime = when (ext) {
-            "wav" -> "audio/wav"
-            "mp3" -> "audio/mpeg"
-            else -> "audio/mp4"
-        }
-        val displayName = "mixed_audio_${System.currentTimeMillis()}.$ext"
+        val displayName = "mixed_audio_${System.currentTimeMillis()}.m4a"
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-                    put(MediaStore.Audio.Media.MIME_TYPE, mime)
+                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
                     put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     put(MediaStore.Audio.Media.IS_PENDING, 1)
                 }
