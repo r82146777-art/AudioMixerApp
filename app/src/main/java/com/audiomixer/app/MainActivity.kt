@@ -506,7 +506,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun finishMix(file: File?, error: String) {
-        if (!isMixing && file == null && error.isEmpty()) return
         isMixing = false
         stopProgress()
         mixTimeoutRunnable?.let { uiHandler.removeCallbacks(it) }
@@ -552,10 +551,14 @@ class MainActivity : AppCompatActivity() {
         mainFileName = ""
         bgFileName = ""
         outputFile = null
-        mainVolume = 1f; bgVolume = 0.5f
-        mainSpeed = 1f; bgSpeed = 1f
-        mainPitch = 1f; bgPitch = 1f
-        mainEcho = 0f; bgEcho = 0f
+        mainVolume = 1f
+        bgVolume = 0.5f
+        mainSpeed = 1f
+        bgSpeed = 1f
+        mainPitch = 1f
+        bgPitch = 1f
+        mainEcho = 0f
+        bgEcho = 0f
         try { binding.cbFade.isChecked = false } catch (_: Exception) {}
 
         updateMainUi(getString(R.string.no_file_selected))
@@ -577,18 +580,18 @@ class MainActivity : AppCompatActivity() {
                 binding.btnPlay.text = getString(R.string.play_result)
             } else {
                 if (mediaPlayer == null) {
-                    mediaPlayer = MediaPlayer().apply {
-                        setDataSource(f.absolutePath)
-                        setOnCompletionListener {
-                            isPlaying = false
-                            binding.btnPlay.text = getString(R.string.play_result)
-                        }
-                        prepare()
+                    val player = MediaPlayer()
+                    player.setDataSource(f.absolutePath)
+                    player.setOnCompletionListener {
+                        this@MainActivity.isPlaying = false
+                        binding.btnPlay.text = getString(R.string.play_result)
                     }
+                    player.prepare()
+                    mediaPlayer = player
                 }
                 mediaPlayer?.start()
                 isPlaying = true
-                binding.btnPlay.text = getString(R.string.pause)
+                binding.btnPlay.text = getString(R.string.pause_result)
             }
         } catch (e: Exception) {
             Toast.makeText(this, "پخش ممکن نیست: ${e.message}", Toast.LENGTH_LONG).show()
@@ -641,7 +644,7 @@ class MainActivity : AppCompatActivity() {
             mediaRecorder?.release()
             mediaRecorder = null
             isRecording = false
-            binding.btnRecord.text = getString(R.string.record)
+            binding.btnRecord.text = getString(R.string.record_start)
             if (recordedFile != null && recordedFile!!.exists()) {
                 Toast.makeText(this, "ضبط تمام شد", Toast.LENGTH_SHORT).show()
             }
@@ -650,21 +653,21 @@ class MainActivity : AppCompatActivity() {
         try {
             val out = File(cacheDir, "rec_${System.currentTimeMillis()}.m4a")
             recordedFile = out
-            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(this)
             } else {
                 @Suppress("DEPRECATION")
                 MediaRecorder()
-            }.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setOutputFile(out.absolutePath)
-                prepare()
-                start()
             }
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setOutputFile(out.absolutePath)
+            recorder.prepare()
+            recorder.start()
+            mediaRecorder = recorder
             isRecording = true
-            binding.btnRecord.text = getString(R.string.stop_record)
+            binding.btnRecord.text = getString(R.string.record_stop)
             Toast.makeText(this, "در حال ضبط...", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "ضبط ممکن نیست: ${e.message}", Toast.LENGTH_LONG).show()
