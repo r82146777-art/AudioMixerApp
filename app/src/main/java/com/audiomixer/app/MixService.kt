@@ -12,9 +12,8 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Mix in separate :mix process.
- * Result is always sent via BROADCAST (reliable across processes).
- * Simple mixes use fast Java path; FX/overlays use FFmpeg.
+ * Mix runs in :mix process so UI never crashes.
+ * Always sends ACTION_MIX_DONE broadcast when finished (success or fail).
  */
 class MixService : Service() {
 
@@ -47,7 +46,7 @@ class MixService : Service() {
         val mainEcho = intent.getFloatExtra(EXTRA_MAIN_ECHO, 0f)
         val bgEcho = intent.getFloatExtra(EXTRA_BG_ECHO, 0f)
         val fade = intent.getBooleanExtra(EXTRA_FADE, false)
-        val durationSec = intent.getDoubleExtra(EXTRA_DURATION_SEC, 0.0)
+        var durationSec = intent.getDoubleExtra(EXTRA_DURATION_SEC, 0.0)
         val overlaysRaw = intent.getStringExtra(EXTRA_OVERLAYS) ?: ""
 
         Thread {
@@ -64,20 +63,24 @@ class MixService : Service() {
                     File(outPath).parentFile?.mkdirs()
                     try { File(outPath).delete() } catch (_: Exception) {}
 
+                    if (durationSec <= 0.5) {
+                        durationSec = probeDuration(mainPath)
+                    }
+
                     val overlays = parseOverlays(overlaysRaw)
                     val needsFx = hasFx(mainSpeed, bgSpeed, mainPitch, bgPitch, mainEcho, bgEcho, fade) || overlays.isNotEmpty()
 
-                    // 1) Simple case: fast reliable Java mixer (no FX)
+                    // Path A: simple mix — Java first (fast + reliable)
                     if (!needsFx && !cancelled.get()) {
                         ok = runJava(mainPath, bgPath, outPath, mainVol, bgVol)
                     }
 
-                    // 2) FFmpeg simple (volume only)
+                    // Path B: FFmpeg volume-only if Java failed
                     if (!ok && !needsFx && !cancelled.get()) {
-                        ok = runFfmpegSimple(mainPath, bgPath, outPath, mainVol, bgVol, durationSec)
+                        ok = runFfmpegVolume(mainPath, bgPath, outPath, mainVol, bgVol, durationSec)
                     }
 
-                    // 3) FFmpeg full (speed/pitch/echo/fade/overlays)
+                    // Path C: full FX / overlays
                     if (!ok && needsFx && !cancelled.get()) {
                         ok = runFfmpegFull(
                             mainPath, bgPath, outPath,
@@ -87,7 +90,7 @@ class MixService : Service() {
                         )
                     }
 
-                    // 4) Last resort Java even if FX requested (volume only at least)
+                    // Path D: last resort volume-only Java
                     if (!ok && !cancelled.get()) {
                         ok = runJava(mainPath, bgPath, outPath, mainVol, bgVol)
                     }
@@ -103,7 +106,7 @@ class MixService : Service() {
                     }
                 }
             } catch (t: Throwable) {
-                err = if (cancelled.get()) "میکس لغو شد" else "خطا در میکس: ${t.message ?: "نامشخص"}"
+                err = if (cancelled.get()) "میکس لغو شد" else "خطا: ${t.message ?: "نامشخص"}"
                 ok = false
                 if (!cancelled.get()) {
                     try {
@@ -113,16 +116,13 @@ class MixService : Service() {
                 }
             }
 
-            // Always notify UI via broadcast (works across processes)
             val result = Intent(ACTION_MIX_DONE).apply {
                 setPackage(packageName)
                 putExtra(KEY_OK, ok)
                 putExtra(KEY_PATH, outPath)
                 putExtra(KEY_ERROR, err)
             }
-            try {
-                sendBroadcast(result)
-            } catch (_: Exception) {}
+            try { sendBroadcast(result) } catch (_: Exception) {}
             stopSelf(startId)
         }.start()
 
@@ -140,7 +140,7 @@ class MixService : Service() {
             val ms = bits[1].toLongOrNull() ?: return@mapNotNull null
             if (!File(path).exists()) return@mapNotNull null
             Overlay(path, ms.coerceAtLeast(0L))
-        }.take(12)
+        }.take(8)
     }
 
     private fun hasFx(ms: Float, bs: Float, mp: Float, bp: Float, me: Float, be: Float, fade: Boolean) =
@@ -150,6 +150,18 @@ class MixService : Service() {
 
     private fun f(v: Float) = String.format(Locale.US, "%.3f", v)
     private fun d(v: Double) = String.format(Locale.US, "%.3f", v)
+
+    private fun probeDuration(path: String): Double {
+        return try {
+            val r = android.media.MediaMetadataRetriever()
+            r.setDataSource(path)
+            val ms = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            r.release()
+            (ms / 1000.0).coerceAtLeast(1.0)
+        } catch (_: Exception) {
+            60.0
+        }
+    }
 
     private fun buildTrack(vol: Float, speed: Float, pitch: Float, echo: Float): String {
         val parts = ArrayList<String>()
@@ -169,41 +181,33 @@ class MixService : Service() {
         return parts.joinToString(",")
     }
 
-    /** Reliable simple mix: loop bg until main ends */
-    private fun runFfmpegSimple(
+    /** Volume-only FFmpeg: always finite with -t */
+    private fun runFfmpegVolume(
         mainPath: String, bgPath: String, outPath: String,
         mainVol: Float, bgVol: Float, durationSec: Double
     ): Boolean {
         if (cancelled.get()) return false
+        val t = if (durationSec > 0.5) durationSec else 120.0
         return try {
             val filter =
                 "[0:a]volume=${f(mainVol)}[a0];" +
-                "[1:a]volume=${f(bgVol)}[a1];" +
+                "[1:a]volume=${f(bgVol)},aloop=loop=-1:size=2e9[a1];" +
                 "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[a]"
 
-            val args = ArrayList<String>()
-            args.add("-y")
-            args.add("-i"); args.add(mainPath)
-            // finite loop instead of infinite when we know duration
-            if (durationSec > 1.0) {
-                // stream_loop still needed for short bg; -t limits total length
-                args.add("-stream_loop"); args.add("-1")
-            }
-            args.add("-i"); args.add(bgPath)
-            args.add("-filter_complex"); args.add(filter)
-            args.add("-map"); args.add("[a]")
-            args.add("-c:a"); args.add("aac")
-            args.add("-b:a"); args.add(if (durationSec > 900) "64k" else "96k")
-            args.add("-ac"); args.add("2")
-            args.add("-ar"); args.add("44100")
-            if (durationSec > 1.0) {
-                args.add("-t"); args.add(d(durationSec))
-            } else {
-                args.add("-shortest")
-            }
-            args.add(outPath)
-
-            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
+            val args = arrayOf(
+                "-y",
+                "-i", mainPath,
+                "-i", bgPath,
+                "-filter_complex", filter,
+                "-map", "[a]",
+                "-c:a", "aac",
+                "-b:a", if (t > 900) "64k" else "96k",
+                "-ac", "2",
+                "-ar", "44100",
+                "-t", d(t),
+                outPath
+            )
+            val session = FFmpegKit.executeWithArguments(args)
             if (cancelled.get()) {
                 try { File(outPath).delete() } catch (_: Exception) {}
                 return false
@@ -225,14 +229,14 @@ class MixService : Service() {
         overlays: List<Overlay>
     ): Boolean {
         if (cancelled.get()) return false
+        val t = if (durationSec > 0.5) durationSec else 120.0
         return try {
             val mainF = buildTrack(mainVol, mainSpeed, mainPitch, mainEcho)
-            val bgF = buildTrack(bgVol, bgSpeed, bgPitch, bgEcho)
+            val bgF = buildTrack(bgVol, bgSpeed, bgPitch, bgEcho) + ",aloop=loop=-1:size=2e9"
 
             val args = ArrayList<String>()
             args.add("-y")
             args.add("-i"); args.add(mainPath)
-            args.add("-stream_loop"); args.add("-1")
             args.add("-i"); args.add(bgPath)
             for (o in overlays) {
                 args.add("-i"); args.add(o.path)
@@ -254,8 +258,8 @@ class MixService : Service() {
             filter.append(mixLabels.joinToString(""))
             filter.append("amix=inputs=$n:duration=first:dropout_transition=0")
 
-            if (fade && durationSec > 3.0) {
-                val outStart = d((durationSec - 1.5).coerceAtLeast(0.0))
+            if (fade && t > 3.0) {
+                val outStart = d((t - 1.5).coerceAtLeast(0.0))
                 filter.append("[am];[am]afade=t=in:st=0:d=1.0,afade=t=out:st=$outStart:d=1.5[a]")
             } else if (fade) {
                 filter.append("[am];[am]afade=t=in:st=0:d=0.5,afade=t=out:st=0:d=0.5[a]")
@@ -265,13 +269,8 @@ class MixService : Service() {
 
             args.add("-filter_complex"); args.add(filter.toString())
             args.add("-map"); args.add("[a]")
-            val bitrate = if (durationSec > 900) "64k" else "96k"
-            args.addAll(listOf("-c:a", "aac", "-b:a", bitrate, "-ac", "2", "-ar", "44100"))
-            if (durationSec > 1.0) {
-                args.add("-t"); args.add(d(durationSec))
-            } else {
-                args.add("-shortest")
-            }
+            args.addAll(listOf("-c:a", "aac", "-b:a", if (t > 900) "64k" else "96k", "-ac", "2", "-ar", "44100"))
+            args.add("-t"); args.add(d(t))
             args.add(outPath)
 
             val session = FFmpegKit.executeWithArguments(args.toTypedArray())
