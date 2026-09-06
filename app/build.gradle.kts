@@ -11,10 +11,14 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -40,6 +44,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -50,8 +57,11 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // Stable pure Java/Kotlin audio mixer — no native crash
+    // Java mixer for simple/short mixes
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
+
+    // Lightweight FFmpeg for long files + speed/pitch/echo (async)
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:6.0.2")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
