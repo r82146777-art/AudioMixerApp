@@ -32,12 +32,6 @@
             android:parentActivityName=".MainActivity"
             android:screenOrientation="portrait"
             android:label="جستجوی افکت‌ها" />
-
-        <!-- Separate process: FFmpeg crash cannot kill UI -->
-        <service
-            android:name=".MixService"
-            android:exported="false"
-            android:process=":mix" />
     </application>
 
 </manifest>
