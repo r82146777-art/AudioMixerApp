@@ -57,11 +57,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.activity:activity-ktx:1.8.2")
 
-    // Java mixer for simple/short mixes
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
 
-    // Lightweight FFmpeg for long files + speed/pitch/echo (async)
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:6.0.2")
+    // Working version previously used in this project
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
