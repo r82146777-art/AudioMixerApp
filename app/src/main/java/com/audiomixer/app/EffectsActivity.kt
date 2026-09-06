@@ -28,7 +28,7 @@ import kotlin.math.sin
 
 data class EffectItem(
     val name: String,
-    val source: String, // local | online | builtin
+    val source: String,
     val pathOrUrl: String
 )
 
@@ -44,11 +44,10 @@ class EffectsActivity : AppCompatActivity() {
     private val shownEffects = mutableListOf<EffectItem>()
     private var player: MediaPlayer? = null
 
-    /** لینک‌های مستقیم پایدار (نمونه) */
     private val onlineCatalog = listOf(
-        EffectItem("نمونه موسیقی ۱", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
-        EffectItem("نمونه موسیقی ۲", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
-        EffectItem("تست MP3", "online", "https://archive.org/download/testmp3testfile/mpthreetest.mp3")
+        EffectItem("Sample 1", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"),
+        EffectItem("Sample 2", "online", "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"),
+        EffectItem("Test MP3", "online", "https://archive.org/download/testmp3testfile/mpthreetest.mp3")
     )
 
     private val pickEffectLauncher = registerForActivityResult(
@@ -80,26 +79,31 @@ class EffectsActivity : AppCompatActivity() {
         btnAddLocal.setOnClickListener { pickEffectLauncher.launch(arrayOf("audio/*")) }
     }
 
-    /** ساخت چند افکت کوتاه آفلاین داخل برنامه */
     private fun ensureBuiltinEffects() {
         val dir = File(filesDir, "effects")
         if (!dir.exists()) dir.mkdirs()
         val builtins = listOf(
-            "بوق" to 880.0,
-            "زنگ" to 1200.0,
-            "بم" to 220.0,
-            "سوت" to 1760.0
+            Triple("beep", "بوق", 880.0),
+            Triple("ring", "زنگ", 1200.0),
+            Triple("bass", "بم", 220.0),
+            Triple("whistle", "سوت", 1760.0)
         )
-        for ((name, freq) in builtins) {
-            val f = File(dir, "builtin_$name.wav")
-            if (!f.exists() || f.length() < 100) {
-                try { writeToneWav(f, freq, 0.6) } catch (_: Exception) {}
+        for ((fileId, label, freq) in builtins) {
+            val f = File(dir, "builtin_$fileId.wav")
+            if (!f.exists() || f.length() < 100L) {
+                try {
+                    writeToneWav(f, freq, 0.6)
+                    // store label sidecar for Persian name
+                    File(dir, "builtin_$fileId.txt").writeText(label)
+                } catch (_: Exception) {}
             }
         }
-        // نویز کوتاه شبیه باد
-        val noise = File(dir, "builtin_نویز.wav")
-        if (!noise.exists() || noise.length() < 100) {
-            try { writeNoiseWav(noise, 0.8) } catch (_: Exception) {}
+        val noise = File(dir, "builtin_noise.wav")
+        if (!noise.exists() || noise.length() < 100L) {
+            try {
+                writeNoiseWav(noise, 0.8)
+                File(dir, "builtin_noise.txt").writeText("نویز")
+            } catch (_: Exception) {}
         }
     }
 
@@ -114,9 +118,10 @@ class EffectsActivity : AppCompatActivity() {
                 t > durationSec - 0.1 -> ((durationSec - t) / 0.1).coerceAtLeast(0.0)
                 else -> 1.0
             }
-            val sample = (sin(2 * PI * freqHz * t) * 0.4 * env * Short.MAX_VALUE).toInt().toShort()
-            data[i * 2] = (sample.toInt() and 0xff).toByte()
-            data[i * 2 + 1] = ((sample.toInt() shr 8) and 0xff).toByte()
+            val amp = sin(2.0 * PI * freqHz * t) * 0.4 * env
+            val sample = (amp * 32767.0).toInt().coerceIn(-32768, 32767)
+            data[i * 2] = (sample and 0xff).toByte()
+            data[i * 2 + 1] = ((sample shr 8) and 0xff).toByte()
         }
         writeWav(file, sampleRate, data)
     }
@@ -127,11 +132,11 @@ class EffectsActivity : AppCompatActivity() {
         val data = ByteArray(n * 2)
         var seed = 1234567L
         for (i in 0 until n) {
-            seed = (seed * 1103515245 + 12345) and 0x7fffffff
-            val r = ((seed % 20000) - 10000) / 10000.0
-            val sample = (r * 0.25 * Short.MAX_VALUE).toInt().toShort()
-            data[i * 2] = (sample.toInt() and 0xff).toByte()
-            data[i * 2 + 1] = ((sample.toInt() shr 8) and 0xff).toByte()
+            seed = (seed * 1103515245L + 12345L) and 0x7fffffffL
+            val r = ((seed % 20000L) - 10000L).toDouble() / 10000.0
+            val sample = (r * 0.25 * 32767.0).toInt().coerceIn(-32768, 32767)
+            data[i * 2] = (sample and 0xff).toByte()
+            data[i * 2 + 1] = ((sample shr 8) and 0xff).toByte()
         }
         writeWav(file, sampleRate, data)
     }
@@ -145,8 +150,8 @@ class EffectsActivity : AppCompatActivity() {
             out.writeBytes("WAVE")
             out.writeBytes("fmt ")
             writeIntLE(out, 16)
-            writeShortLE(out, 1) // PCM
-            writeShortLE(out, 1) // mono
+            writeShortLE(out, 1)
+            writeShortLE(out, 1)
             writeIntLE(out, sampleRate)
             writeIntLE(out, sampleRate * 2)
             writeShortLE(out, 2)
@@ -172,9 +177,11 @@ class EffectsActivity : AppCompatActivity() {
     private fun loadLocalEffects(): List<EffectItem> {
         val dir = File(filesDir, "effects")
         if (!dir.exists()) dir.mkdirs()
-        return dir.listFiles()?.filter { it.isFile && it.length() > 100 }?.map {
-            val label = it.nameWithoutExtension.removePrefix("builtin_").replace('_', ' ')
-            EffectItem(label, "local", it.absolutePath)
+        return dir.listFiles()?.filter { it.isFile && it.extension.lowercase() in listOf("wav", "mp3", "m4a", "audio") && it.length() > 100L }?.map { f ->
+            val base = f.nameWithoutExtension
+            val labelFile = File(dir, "$base.txt")
+            val label = if (labelFile.exists()) labelFile.readText().trim() else base.removePrefix("builtin_").replace('_', ' ')
+            EffectItem(label.ifBlank { f.name }, "local", f.absolutePath)
         } ?: emptyList()
     }
 
@@ -187,7 +194,7 @@ class EffectsActivity : AppCompatActivity() {
         }
         refreshList()
         if (shownEffects.isEmpty()) {
-            Toast.makeText(this, "افکتی پیدا نشد. از «افزودن از گوشی» استفاده کنید.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "افکتی پیدا نشد. از افزودن از گوشی استفاده کنید.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -202,10 +209,8 @@ class EffectsActivity : AppCompatActivity() {
                     .inflate(R.layout.item_effect, parent, false)
                 val item = shownEffects[position]
                 view.findViewById<TextView>(R.id.tvEffectName).text = item.name
-                view.findViewById<TextView>(R.id.tvEffectSource).text = when (item.source) {
-                    "local" -> "ذخیره روی گوشی (آفلاین)"
-                    else -> "آنلاین — نیاز به اینترنت"
-                }
+                view.findViewById<TextView>(R.id.tvEffectSource).text =
+                    if (item.source == "local") "آفلاین / ذخیره شده" else "آنلاین — نیاز به اینترنت"
                 view.findViewById<Button>(R.id.btnPlayEffect).setOnClickListener { playEffect(item) }
                 view.findViewById<Button>(R.id.btnSaveEffect).setOnClickListener {
                     if (item.source == "local") {
@@ -217,7 +222,7 @@ class EffectsActivity : AppCompatActivity() {
                 view.findViewById<Button>(R.id.btnUseEffect).setOnClickListener {
                     Toast.makeText(
                         this@EffectsActivity,
-                        "در صفحه اصلی، این فایل را از حافظه به‌عنوان پس‌زمینه انتخاب کنید (پوشه افکت‌های برنامه)",
+                        "در صفحه اصلی این فایل را از حافظه به‌عنوان پس‌زمینه انتخاب کنید",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -233,7 +238,6 @@ class EffectsActivity : AppCompatActivity() {
             if (item.source == "local") {
                 playLocal(item.pathOrUrl)
             } else {
-                // اول دانلود موقت، بعد پخش (پایدارتر از استریم)
                 Toast.makeText(this, "آماده‌سازی پخش...", Toast.LENGTH_SHORT).show()
                 lifecycleScope.launch {
                     val tmp = withContext(Dispatchers.IO) {
@@ -253,7 +257,7 @@ class EffectsActivity : AppCompatActivity() {
             player?.release()
             player = MediaPlayer().apply {
                 setDataSource(path)
-                setOnPreparedListener { it.start() }
+                setOnPreparedListener { start() }
                 setOnErrorListener { _, _, _ ->
                     Toast.makeText(this@EffectsActivity, "پخش ممکن نیست", Toast.LENGTH_SHORT).show()
                     true
@@ -272,7 +276,7 @@ class EffectsActivity : AppCompatActivity() {
                 try {
                     val dir = File(filesDir, "effects")
                     if (!dir.exists()) dir.mkdirs()
-                    val safeName = item.name.replace(Regex("[^\w\u0600-\u06FF]+"), "_")
+                    val safeName = item.name.replace(Regex("[^a-zA-Z0-9_\u0600-\u06FF]+"), "_")
                     val out = File(dir, "${safeName}_${System.currentTimeMillis()}.mp3")
                     downloadToFile(item.pathOrUrl, out) != null
                 } catch (_: Exception) {
@@ -305,7 +309,7 @@ class EffectsActivity : AppCompatActivity() {
                     connectTimeout = 20000
                     readTimeout = 60000
                     requestMethod = "GET"
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Android) AudioMixer/1.0")
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36")
                     setRequestProperty("Accept", "*/*")
                 }
                 val code = conn.responseCode
@@ -324,7 +328,7 @@ class EffectsActivity : AppCompatActivity() {
                     FileOutputStream(out).use { output -> input.copyTo(output) }
                 }
                 conn.disconnect()
-                return if (out.exists() && out.length() > 100) out else null
+                return if (out.exists() && out.length() > 100L) out else null
             }
             null
         } catch (_: Exception) {
@@ -340,7 +344,7 @@ class EffectsActivity : AppCompatActivity() {
             contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(out).use { output -> input.copyTo(output) }
             }
-            if (out.exists() && out.length() > 0) {
+            if (out.exists() && out.length() > 0L) {
                 Toast.makeText(this, "افکت اضافه شد", Toast.LENGTH_SHORT).show()
                 allEffects.clear()
                 allEffects.addAll(loadLocalEffects())
