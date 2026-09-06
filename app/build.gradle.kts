@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.audiomixer.app"
-        minSdk = 24
+        minSdk = 21
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 46
+        versionName = "1.0.46"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -58,8 +58,6 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.8.2")
 
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
-
-    // Working version previously used in this project
     implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
 
     testImplementation("junit:junit:4.13.2")
