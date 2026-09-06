@@ -286,7 +286,6 @@ class MainActivity : AppCompatActivity() {
         return name!!
     }
 
-    /** Copy with real extension so decoders work */
     private fun copyUriToCache(uri: Uri, prefix: String, displayName: String): File? {
         return try {
             val input = contentResolver.openInputStream(uri) ?: return null
@@ -430,74 +429,102 @@ class MainActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
         binding.progressBar.isIndeterminate = false
         binding.progressBar.max = 100
-        binding.progressBar.progress = 5
+        binding.progressBar.progress = 3
         binding.btnMix.isEnabled = false
         binding.btnPlay.isEnabled = false
         binding.btnSave.isEnabled = false
 
-        val durationSec = getAudioDurationSec(main).let { if (it < 0.5) 0.0 else it }
+        var durationSec = getAudioDurationSec(main)
+        if (durationSec < 0.5) durationSec = getAudioDurationSec(main)
         val mins = if (durationSec > 0) durationSec / 60.0 else 0.0
         binding.tvStatus.text = if (mins >= 1) {
-            String.format(Locale.US, "در حال میکس فایل %.0f دقیقه‌ای...", mins)
+            String.format(Locale.US, "در حال میکس فایل %.0f دقیقه‌ای... صبر کنید", mins)
         } else {
             "در حال میکس... لطفاً صبر کنید"
         }
 
-        val useMp3 = binding.rbMp3.isChecked
         val useWav = binding.rbWav.isChecked
         val outExt = when {
             useWav -> "wav"
-            useMp3 -> "mp3"
             else -> "m4a"
         }
-        // Encoder: wav=pcm, mp3 via libmp3lame may not exist in ffmpeg-kit-audio → use aac in m4a container labeled mp3 request fallback to m4a
         val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$outExt")
 
-        startFakeProgress()
+        // Capture UI values on main thread
+        val fade = binding.cbFade.isChecked
+        val fx = needsFx()
+        val mVol = mainVolume
+        val bVol = bgVolume
+        val mSp = mainSpeed
+        val bSp = bgSpeed
+        val mPi = mainPitch
+        val bPi = bgPitch
+        val mEc = mainEcho
+        val bEc = bgEcho
+        val overlays = parseOverlays()
+
+        startProgress(outFile, durationSec)
 
         mixJob = lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                mixInternal(main, bg, outFile, durationSec, outExt)
+                mixInternal(
+                    main, bg, outFile, durationSec, outExt,
+                    fx, fade, mVol, bVol, mSp, bSp, mPi, bPi, mEc, bEc, overlays
+                )
             }
             if (!isActive) return@launch
-            if (result.first != null) {
-                finishMix(result.first, "")
-            } else {
-                finishMix(null, result.second)
-            }
+            if (result.first != null) finishMix(result.first, "")
+            else finishMix(null, result.second)
         }
     }
 
-    /**
-     * Returns Pair(successFile, errorMessage)
-     */
-    private fun mixInternal(main: File, bg: File, outFile: File, durationSec: Double, outExt: String): Pair<File?, String> {
+    private fun mixInternal(
+        main: File, bg: File, outFile: File,
+        durationSec: Double, outExt: String,
+        fx: Boolean, fade: Boolean,
+        mVol: Float, bVol: Float,
+        mSp: Float, bSp: Float,
+        mPi: Float, bPi: Float,
+        mEc: Float, bEc: Float,
+        overlays: List<Pair<String, Long>>
+    ): Pair<File?, String> {
         try {
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
             try { outFile.delete() } catch (_: Exception) {}
 
-            val overlays = parseOverlays()
-            val fx = needsFx() || overlays.isNotEmpty()
+            val longFile = durationSec > 60.0
+            val mustFfmpeg = fx || overlays.isNotEmpty() || longFile
 
-            // 1) Simple volume mix with Java library (most reliable for short/medium)
-            if (!fx) {
-                val ok = runJavaMix(main, bg, outFile)
-                if (ok) return Pair(outFile, "")
+            // Short + no FX: try fast Java first
+            if (!mustFfmpeg) {
+                if (runJavaMix(main, bg, outFile, mVol, bVol)) {
+                    return Pair(outFile, "")
+                }
             }
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // 2) FFmpeg (handles long files, FX, overlays)
-            val okFf = runFfmpegMix(main, bg, outFile, durationSec, outExt, overlays)
-            if (okFf) return Pair(outFile, "")
+            // FFmpeg: long files, FX, overlays
+            val ffOk = runFfmpegMix(
+                main, bg, outFile, durationSec, outExt,
+                fade, mVol, bVol, mSp, bSp, mPi, bPi, mEc, bEc, overlays
+            )
+            if (ffOk) return Pair(outFile, "")
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // 3) Last resort Java again
-            val ok2 = runJavaMix(main, bg, outFile)
-            if (ok2) return Pair(outFile, "")
+            // Last resort: volume-only Java (only if user didn't ask for FX)
+            if (!fx && overlays.isEmpty()) {
+                if (runJavaMix(main, bg, outFile, mVol, bVol)) {
+                    return Pair(outFile, "")
+                }
+            }
 
-            return Pair(null, "میکس انجام نشد. فرمت فایل را بررسی کنید یا فایل دیگری امتحان کنید.")
+            return Pair(
+                null,
+                if (fx) "اعمال افکت‌ها ناموفق بود. دوباره تلاش کنید."
+                else "میکس انجام نشد. فایل دیگری امتحان کنید."
+            )
         } catch (t: Throwable) {
             return Pair(null, "خطا: ${t.message ?: "نامشخص"}")
         }
@@ -516,21 +543,18 @@ class MainActivity : AppCompatActivity() {
         }.take(8)
     }
 
-    private fun runJavaMix(main: File, bg: File, outFile: File): Boolean {
+    private fun runJavaMix(main: File, bg: File, outFile: File, mVol: Float, bVol: Float): Boolean {
         if (cancelFlag.get()) return false
         return try {
             try { outFile.delete() } catch (_: Exception) {}
-            // Java mixer outputs AAC/m4a-style; if user asked wav/mp3, still produce then rename if needed
-            val tempOut = if (outFile.extension.lowercase() == "m4a" || outFile.extension.lowercase() == "mp3") {
-                outFile
-            } else {
-                File(cacheDir, "tmp_java_${System.currentTimeMillis()}.m4a")
-            }
+            val tempOut = if (outFile.extension.lowercase() in listOf("m4a", "mp3")) outFile
+            else File(cacheDir, "tmp_java_${System.currentTimeMillis()}.m4a")
+
             val mixer = AudioMixer(tempOut.absolutePath)
             val in1 = GeneralAudioInput(main.absolutePath)
-            in1.setVolume(mainVolume.coerceIn(0f, 2f))
+            in1.setVolume(mVol.coerceIn(0f, 2f))
             val in2 = GeneralAudioInput(bg.absolutePath)
-            in2.setVolume(bgVolume.coerceIn(0f, 2f))
+            in2.setVolume(bVol.coerceIn(0f, 2f))
             val d1 = try { in1.durationUs } catch (_: Exception) { 0L }
             val d2 = try { in2.durationUs } catch (_: Exception) { 0L }
             if (d1 > 0 && d2 > d1) {
@@ -560,20 +584,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Build per-track filters: volume + speed + pitch + echo */
     private fun buildTrack(vol: Float, speed: Float, pitch: Float, echo: Float): String {
         val parts = ArrayList<String>()
         parts.add("volume=${f(vol.coerceIn(0f, 2f))}")
-        val sp = speed.coerceIn(0.5f, 2f)
-        if (kotlin.math.abs(sp - 1f) > 0.02f) parts.add("atempo=${f(sp)}")
+
+        // Pitch first (asetrate), then compensate tempo, then user speed
         val p = pitch.coerceIn(0.5f, 2f)
         if (kotlin.math.abs(p - 1f) > 0.02f) {
             parts.add("asetrate=${f(44100f * p)}")
             parts.add("aresample=44100")
-            parts.add("atempo=${f((1f / p).coerceIn(0.5f, 2f))}")
+            // undoes duration change from pitch
+            val inv = (1f / p).coerceIn(0.5f, 2f)
+            parts.add("atempo=${f(inv)}")
         }
+
+        val sp = speed.coerceIn(0.5f, 2f)
+        if (kotlin.math.abs(sp - 1f) > 0.02f) {
+            // atempo only accepts 0.5..2.0
+            parts.add("atempo=${f(sp)}")
+        }
+
         if (echo > 0.05f) {
-            val g = f((0.45f * echo).coerceIn(0.1f, 0.65f))
-            parts.add("aecho=0.8:$g:55:0.35")
+            val g = f((0.5f * echo).coerceIn(0.15f, 0.7f))
+            val delay = f(40f + echo * 80f) // 40..120 ms
+            parts.add("aecho=0.8:$g:$delay:0.4")
         }
         return parts.joinToString(",")
     }
@@ -581,28 +616,33 @@ class MainActivity : AppCompatActivity() {
     private fun runFfmpegMix(
         main: File, bg: File, outFile: File,
         durationSec: Double, outExt: String,
+        fade: Boolean,
+        mVol: Float, bVol: Float,
+        mSp: Float, bSp: Float,
+        mPi: Float, bPi: Float,
+        mEc: Float, bEc: Float,
         overlays: List<Pair<String, Long>>
     ): Boolean {
         if (cancelFlag.get()) return false
         return try {
             try { outFile.delete() } catch (_: Exception) {}
-            val t = if (durationSec > 0.5) durationSec else 0.0
 
-            val mainF = buildTrack(mainVolume, mainSpeed, mainPitch, mainEcho)
-            val bgF = buildTrack(bgVolume, bgSpeed, bgPitch, bgEcho)
+            // Hard duration so FFmpeg never hangs
+            val t = when {
+                durationSec > 0.5 -> durationSec
+                else -> 300.0 // fallback 5 min if unknown
+            }
+
+            val mainF = buildTrack(mVol, mSp, mPi, mEc)
+            // aloop on bg so short bg repeats until main ends — no -stream_loop (avoids hang)
+            val bgF = buildTrack(bVol, bSp, bPi, bEc) + ",aloop=loop=-1:size=2e+09"
 
             val args = ArrayList<String>()
             args.add("-y")
-            args.add("-i")
-            args.add(main.absolutePath)
-            // Loop background until main ends
-            args.add("-stream_loop")
-            args.add("-1")
-            args.add("-i")
-            args.add(bg.absolutePath)
+            args.add("-i"); args.add(main.absolutePath)
+            args.add("-i"); args.add(bg.absolutePath)
             for ((path, _) in overlays) {
-                args.add("-i")
-                args.add(path)
+                args.add("-i"); args.add(path)
             }
 
             val filter = StringBuilder()
@@ -617,47 +657,29 @@ class MainActivity : AppCompatActivity() {
             }
             filter.append(";")
             filter.append(labels.joinToString(""))
-            filter.append("amix=inputs=${labels.size}:duration=first:dropout_transition=2")
+            filter.append("amix=inputs=${labels.size}:duration=first:dropout_transition=0:normalize=0")
 
-            if (binding.cbFade.isChecked && t > 3.0) {
-                val outStart = d((t - 1.5).coerceAtLeast(0.0))
-                filter.append("[am];[am]afade=t=in:st=0:d=1.0,afade=t=out:st=$outStart:d=1.5[a]")
-            } else if (binding.cbFade.isChecked) {
-                filter.append("[am];[am]afade=t=in:st=0:d=0.5,afade=t=out:st=0:d=0.5[a]")
+            if (fade && t > 2.0) {
+                val fadeOutStart = d((t - 1.5).coerceAtLeast(0.0))
+                filter.append("[am];[am]afade=t=in:st=0:d=1.0,afade=t=out:st=$fadeOutStart:d=1.5[a]")
+            } else if (fade) {
+                filter.append("[am];[am]afade=t=in:st=0:d=0.4,afade=t=out:st=0:d=0.4[a]")
             } else {
                 filter.append("[a]")
             }
 
-            args.add("-filter_complex")
-            args.add(filter.toString())
-            args.add("-map")
-            args.add("[a]")
+            args.add("-filter_complex"); args.add(filter.toString())
+            args.add("-map"); args.add("[a]")
 
-            when (outExt) {
-                "wav" -> {
-                    args.add("-c:a")
-                    args.add("pcm_s16le")
-                }
-                else -> {
-                    // m4a / mp3 request: AAC is always available in ffmpeg-kit-audio
-                    args.add("-c:a")
-                    args.add("aac")
-                    args.add("-b:a")
-                    args.add(if (t > 900) "64k" else "128k")
-                }
-            }
-            args.add("-ac")
-            args.add("2")
-            args.add("-ar")
-            args.add("44100")
-
-            // Always bound length so FFmpeg cannot hang forever
-            if (t > 0.5) {
-                args.add("-t")
-                args.add(d(t))
+            if (outExt == "wav") {
+                args.add("-c:a"); args.add("pcm_s16le")
             } else {
-                args.add("-shortest")
+                args.add("-c:a"); args.add("aac")
+                args.add("-b:a"); args.add(if (t > 600) "64k" else "128k")
             }
+            args.add("-ac"); args.add("2")
+            args.add("-ar"); args.add("44100")
+            args.add("-t"); args.add(d(t)) // critical: always finite
             args.add(outFile.absolutePath)
 
             val session = FFmpegKit.executeWithArguments(args.toTypedArray())
@@ -665,24 +687,41 @@ class MainActivity : AppCompatActivity() {
                 try { outFile.delete() } catch (_: Exception) {}
                 return false
             }
-            ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200
+            val ok = ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200
+            if (!ok) {
+                // Retry simpler command without FX filters if complex failed but user had no special FX
+                // Already handled by caller for non-fx; for fx return false
+            }
+            ok
         } catch (_: Throwable) {
             false
         }
     }
 
-    private fun startFakeProgress() {
+    private fun startProgress(outFile: File, durationSec: Double) {
         stopProgress()
-        var p = 5
+        val start = System.currentTimeMillis()
+        // Estimate: ~0.15x realtime for encode of long files, faster for short
+        val estimateMs = when {
+            durationSec > 1800 -> (durationSec * 200).toLong() // 0.2x
+            durationSec > 300 -> (durationSec * 150).toLong()
+            durationSec > 60 -> (durationSec * 100).toLong()
+            else -> 15_000L
+        }.coerceAtLeast(8_000L)
+
         progressRunnable = object : Runnable {
             override fun run() {
                 if (!isMixing) return
-                if (p < 90) {
-                    p += if (p < 30) 3 else if (p < 60) 2 else 1
-                    binding.progressBar.progress = p
-                    binding.tvStatus.text = "در حال میکس... $p٪"
-                }
-                uiHandler.postDelayed(this, 700)
+                val elapsed = System.currentTimeMillis() - start
+                val byTime = ((elapsed * 92) / estimateMs).toInt().coerceIn(3, 92)
+                val bySize = if (outFile.exists() && durationSec > 1) {
+                    val expected = (durationSec * 8000).toLong().coerceAtLeast(50_000L)
+                    ((outFile.length() * 92) / expected).toInt().coerceIn(0, 92)
+                } else 0
+                val p = maxOf(byTime, bySize).coerceIn(3, 95)
+                binding.progressBar.progress = p
+                binding.tvStatus.text = "در حال میکس... $p٪"
+                uiHandler.postDelayed(this, 600)
             }
         }
         uiHandler.post(progressRunnable!!)
@@ -705,6 +744,11 @@ class MainActivity : AppCompatActivity() {
             binding.tvStatus.text = "✅ میکس آماده است — پخش یا ذخیره کنید"
             binding.btnPlay.isEnabled = true
             binding.btnSave.isEnabled = true
+            // reset player so new file can play
+            try { mediaPlayer?.release() } catch (_: Exception) {}
+            mediaPlayer = null
+            isPlaying = false
+            binding.btnPlay.text = getString(R.string.play_result)
             Toast.makeText(this, "میکس با موفقیت انجام شد", Toast.LENGTH_SHORT).show()
         } else {
             binding.progressBar.visibility = View.GONE
