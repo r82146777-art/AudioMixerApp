@@ -31,6 +31,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/record_start"
+                android:textAllCaps="false"
                 android:contentDescription="دکمه شروع یا توقف ضبط صدا" />
 
             <Button
@@ -40,6 +41,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="8dp"
                 android:text="@string/record_delete"
+                android:textAllCaps="false"
                 android:enabled="false"
                 android:contentDescription="حذف صدای ضبط شده" />
         </LinearLayout>
@@ -49,6 +51,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/record_use_as_main"
+            android:textAllCaps="false"
             android:enabled="false"
             android:layout_marginBottom="16dp"
             android:contentDescription="استفاده از صدای ضبط شده به عنوان فایل اصلی" />
@@ -72,18 +75,23 @@
             android:id="@+id/btnSelectMain"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="56dp"
             android:text="@string/select_main_file"
+            android:textAllCaps="false"
             android:contentDescription="دکمه انتخاب فایل اصلی" />
 
         <TextView
             android:id="@+id/tvMainFile"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="56dp"
             android:text="@string/no_file_selected"
-            android:textSize="15sp"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:padding="10dp"
-            android:background="#E8F5E9"
+            android:textColor="#1B5E20"
+            android:padding="12dp"
+            android:background="#C8E6C9"
+            android:maxLines="4"
             android:layout_marginTop="6dp"
             android:layout_marginBottom="8dp"
             android:contentDescription="نام فایل اصلی انتخاب شده" />
@@ -92,8 +100,9 @@
             android:id="@+id/btnMainSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="تنظیمات فایل اصلی"
-            android:contentDescription="تنظیمات فایل اصلی: صدا سرعت زیر و بمی اکو"
+            android:text="صدای فایل اصلی"
+            android:textAllCaps="false"
+            android:contentDescription="تنظیم صدای فایل اصلی"
             android:layout_marginBottom="8dp" />
 
         <Button
@@ -101,6 +110,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="افکت‌ها و جستجوی افکت"
+            android:textAllCaps="false"
             android:contentDescription="صفحه افکت‌ها"
             android:layout_marginBottom="16dp" />
 
@@ -116,18 +126,23 @@
             android:id="@+id/btnSelectBg"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="56dp"
             android:text="@string/select_bg_file"
+            android:textAllCaps="false"
             android:contentDescription="دکمه انتخاب فایل پس‌زمینه" />
 
         <TextView
             android:id="@+id/tvBgFile"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="56dp"
             android:text="@string/no_file_selected"
-            android:textSize="15sp"
+            android:textSize="18sp"
             android:textStyle="bold"
-            android:padding="10dp"
-            android:background="#E3F2FD"
+            android:textColor="#0D47A1"
+            android:padding="12dp"
+            android:background="#BBDEFB"
+            android:maxLines="4"
             android:layout_marginTop="6dp"
             android:layout_marginBottom="8dp"
             android:contentDescription="نام فایل پس‌زمینه انتخاب شده" />
@@ -136,62 +151,90 @@
             android:id="@+id/btnBgSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="تنظیمات فایل پس‌زمینه"
-            android:contentDescription="تنظیمات فایل پس‌زمینه: صدا سرعت زیر و بمی اکو"
+            android:text="صدای فایل پس‌زمینه"
+            android:textAllCaps="false"
+            android:contentDescription="تنظیم صدای فایل پس‌زمینه"
             android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تنظیمات روی فایل میکس‌شده"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvMixSpeed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="سرعت میکس: ۱۰۰٪"
+            android:contentDescription="میزان سرعت فایل میکس شده" />
+
+        <SeekBar
+            android:id="@+id/seekMixSpeed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="200"
+            android:progress="100"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="لغزنده سرعت فایل میکس شده" />
+
+        <TextView
+            android:id="@+id/tvMixPitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="زیر و بمی میکس: ۱۰۰٪"
+            android:contentDescription="میزان زیر و بمی فایل میکس شده" />
+
+        <SeekBar
+            android:id="@+id/seekMixPitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="200"
+            android:progress="100"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="لغزنده زیر و بمی فایل میکس شده" />
+
+        <TextView
+            android:id="@+id/tvEq"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="اکولایزر: عادی"
+            android:contentDescription="اکولایزر فایل میکس شده" />
+
+        <SeekBar
+            android:id="@+id/seekEq"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="50"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="لغزنده اکولایزر بم تا زیر" />
 
         <CheckBox
             android:id="@+id/cbFade"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="ورود و خروج نرم (محو شدن اول و آخر فایل نتیجه)"
+            android:text="ورود و خروج نرم روی فایل میکس‌شده"
             android:contentDescription="تیک ورود و خروج نرم روی فایل نتیجه"
             android:layout_marginBottom="12dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="فرمت خروجی"
+            android:text="خروجی فقط WAV است"
             android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <RadioGroup
-            android:id="@+id/rgFormat"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="16dp">
-
-            <RadioButton
-                android:id="@+id/rbMp3"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="MP3"
-                android:checked="true"
-                android:contentDescription="فرمت خروجی MP3" />
-
-            <RadioButton
-                android:id="@+id/rbM4a"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="M4A"
-                android:layout_marginStart="16dp"
-                android:contentDescription="فرمت خروجی M4A" />
-
-            <RadioButton
-                android:id="@+id/rbWav"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="WAV"
-                android:layout_marginStart="16dp"
-                android:contentDescription="فرمت خروجی WAV" />
-        </RadioGroup>
+            android:textColor="#33691E"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="فرمت خروجی ویو" />
 
         <Button
             android:id="@+id/btnMix"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/mix_create"
+            android:textAllCaps="false"
             android:contentDescription="دکمه میکس و ساخت فایل"
             android:layout_marginBottom="12dp" />
 
@@ -200,6 +243,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/reset"
+            android:textAllCaps="false"
             android:contentDescription="بازنشانی"
             android:layout_marginBottom="12dp" />
 
@@ -208,6 +252,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/play_result"
+            android:textAllCaps="false"
             android:contentDescription="پخش نتیجه"
             android:enabled="false"
             android:layout_marginBottom="12dp" />
@@ -217,6 +262,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/save_to_downloads"
+            android:textAllCaps="false"
             android:contentDescription="ذخیره در دانلودها"
             android:enabled="false" />
 
@@ -236,7 +282,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="center"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:contentDescription="وضعیت" />
 
