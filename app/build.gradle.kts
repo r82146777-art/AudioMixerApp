@@ -11,8 +11,8 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 71
-        versionName = "1.0.71"
+        versionCode = 73
+        versionName = "1.0.73"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
