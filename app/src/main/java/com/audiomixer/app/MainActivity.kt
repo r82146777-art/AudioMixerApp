@@ -107,6 +107,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         prefs = getSharedPreferences("audiomixer_prefs", Context.MODE_PRIVATE)
 
+        // Ensure file name labels are visible
+        binding.tvMainFile.visibility = View.VISIBLE
+        binding.tvBgFile.visibility = View.VISIBLE
+
         if (savedInstanceState != null) {
             mainFileName = savedInstanceState.getString("mainFileName") ?: ""
             bgFileName = savedInstanceState.getString("bgFileName") ?: ""
@@ -208,18 +212,24 @@ class MainActivity : AppCompatActivity() {
     private fun onMainSelected(uri: Uri) {
         val name = resolveName(uri)
         mainFileName = name
-        showMainSelected(name, 0)
-        Toast.makeText(this, "انتخاب شد: $name", Toast.LENGTH_SHORT).show()
+        // Immediate UI feedback on main thread
+        runOnUiThread {
+            showMainSelected(name, 0)
+            Toast.makeText(this, "انتخاب شد: $name", Toast.LENGTH_SHORT).show()
+        }
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "main", name) }
-            if (file != null && file.exists() && file.length() > 0) {
-                mainFile = file
-                showMainSelected(name, file.length())
-                Toast.makeText(this@MainActivity, "✅ فایل اصلی آماده: $name", Toast.LENGTH_SHORT).show()
-            } else {
-                mainFile = null
-                binding.tvMainFile.text = "❌ خطا در خواندن: $name"
-                binding.tvMainFile.setTextColor(Color.RED)
+            runOnUiThread {
+                if (file != null && file.exists() && file.length() > 0) {
+                    mainFile = file
+                    showMainSelected(name, file.length())
+                    Toast.makeText(this@MainActivity, "✅ فایل اصلی آماده", Toast.LENGTH_SHORT).show()
+                } else {
+                    mainFile = null
+                    binding.tvMainFile.visibility = View.VISIBLE
+                    binding.tvMainFile.text = "❌ خطا در خواندن: $name"
+                    binding.tvMainFile.setTextColor(Color.RED)
+                }
             }
         }
     }
@@ -227,33 +237,42 @@ class MainActivity : AppCompatActivity() {
     private fun onBgSelected(uri: Uri) {
         val name = resolveName(uri)
         bgFileName = name
-        showBgSelected(name, 0)
-        Toast.makeText(this, "انتخاب شد: $name", Toast.LENGTH_SHORT).show()
+        runOnUiThread {
+            showBgSelected(name, 0)
+            Toast.makeText(this, "انتخاب شد: $name", Toast.LENGTH_SHORT).show()
+        }
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "bg", name) }
-            if (file != null && file.exists() && file.length() > 0) {
-                bgFile = file
-                showBgSelected(name, file.length())
-                Toast.makeText(this@MainActivity, "✅ فایل پس‌زمینه آماده: $name", Toast.LENGTH_SHORT).show()
-            } else {
-                bgFile = null
-                binding.tvBgFile.text = "❌ خطا در خواندن: $name"
-                binding.tvBgFile.setTextColor(Color.RED)
+            runOnUiThread {
+                if (file != null && file.exists() && file.length() > 0) {
+                    bgFile = file
+                    showBgSelected(name, file.length())
+                    Toast.makeText(this@MainActivity, "✅ فایل پس‌زمینه آماده", Toast.LENGTH_SHORT).show()
+                } else {
+                    bgFile = null
+                    binding.tvBgFile.visibility = View.VISIBLE
+                    binding.tvBgFile.text = "❌ خطا در خواندن: $name"
+                    binding.tvBgFile.setTextColor(Color.RED)
+                }
             }
         }
     }
 
     private fun showMainSelected(name: String, sizeBytes: Long) {
         val sizeStr = if (sizeBytes > 0) " (${formatSize(sizeBytes)})" else ""
-        binding.tvMainFile.text = "✅ $name$sizeStr"
+        binding.tvMainFile.visibility = View.VISIBLE
+        binding.tvMainFile.text = "✅ انتخاب شد: $name$sizeStr"
         binding.tvMainFile.setTextColor(Color.parseColor("#1B5E20"))
+        binding.tvMainFile.textSize = 16f
         binding.btnSelectMain.text = "تغییر فایل اصلی"
     }
 
     private fun showBgSelected(name: String, sizeBytes: Long) {
         val sizeStr = if (sizeBytes > 0) " (${formatSize(sizeBytes)})" else ""
-        binding.tvBgFile.text = "✅ $name$sizeStr"
+        binding.tvBgFile.visibility = View.VISIBLE
+        binding.tvBgFile.text = "✅ انتخاب شد: $name$sizeStr"
         binding.tvBgFile.setTextColor(Color.parseColor("#0D47A1"))
+        binding.tvBgFile.textSize = 16f
         binding.btnSelectBg.text = "تغییر فایل پس‌زمینه"
     }
 
@@ -293,7 +312,7 @@ class MainActivity : AppCompatActivity() {
                             mime.contains("mpeg") || mime.contains("mp3") -> "mp3"
                             mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") -> "m4a"
                             mime.contains("wav") -> "wav"
-                            else -> "m4a"
+                            else -> "mp3"
                         }
                     }
                 }
@@ -440,7 +459,8 @@ class MainActivity : AppCompatActivity() {
         else
             "در حال میکس..."
 
-        val outExt = if (binding.rbWav.isChecked) "wav" else "m4a"
+        // ffmpeg-kit-audio has LAME not AAC → always mp3 or wav
+        val outExt = if (binding.rbWav.isChecked) "wav" else "mp3"
         val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$outExt")
 
         val fade = binding.cbFade.isChecked
@@ -474,14 +494,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Robust pipeline:
-     * A) Convert both to WAV (universal decode)
-     * B) Mix WAVs with simplest amix
-     * C) Optional FX pass
-     * Also tries direct mix and Java mixer as fallbacks.
-     * Accepts output file even if FFmpeg return code is non-success.
-     */
     private fun robustMix(
         main: File, bg: File, outFile: File,
         mainDur: Double, outExt: String,
@@ -501,17 +513,22 @@ class MainActivity : AppCompatActivity() {
                 else -> 90L
             }
 
-            // ---- Path A: Java (short only, timed) ----
-            if (!fx && t > 0 && t <= 60.0) {
+            // Java first for short (MediaCodec path worked in early versions)
+            if (!fx && t > 0 && t <= 90.0) {
                 setProgressUi(20, "میکس سریع...")
-                if (runJavaMixTimed(main, bg, outFile, mVol, bVol, 45_000L)) {
+                val javaOut = if (outExt == "mp3" || outExt == "m4a") outFile
+                else File(cacheDir, "java_${System.currentTimeMillis()}.m4a")
+                if (runJavaMixTimed(main, bg, javaOut, mVol, bVol, (t * 2000 + 30_000).toLong().coerceAtMost(120_000))) {
+                    if (javaOut.absolutePath != outFile.absolutePath) {
+                        return copyOrConvert(javaOut, outFile, outExt, timeout)
+                    }
                     return Pair(outFile, "")
                 }
             }
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // ---- Path B: convert → mix WAV ----
+            // Convert both to WAV then mix with libmp3lame
             setProgressUi(25, "تبدیل فایل اصلی...")
             val mainWav = File(cacheDir, "main_${System.currentTimeMillis()}.wav")
             val bgWav = File(cacheDir, "bg_${System.currentTimeMillis()}.wav")
@@ -522,37 +539,38 @@ class MainActivity : AppCompatActivity() {
 
             if (mainConv && bgConv) {
                 setProgressUi(55, "در حال میکس...")
-                val mixed = File(cacheDir, "mix_${System.currentTimeMillis()}.m4a")
+                val mixed = File(cacheDir, "mix_${System.currentTimeMillis()}.mp3")
                 if (mixWavs(mainWav, bgWav, mixed, mVol, bVol, t, timeout)) {
                     try { mainWav.delete() } catch (_: Exception) {}
                     try { bgWav.delete() } catch (_: Exception) {}
                     return postProcess(mixed, outFile, outExt, fx, fade, mSp, mPi, mEc, t, timeout)
                 }
             }
-
             try { mainWav.delete() } catch (_: Exception) {}
             try { bgWav.delete() } catch (_: Exception) {}
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // ---- Path C: direct mix original files ----
             setProgressUi(60, "میکس مستقیم...")
-            val mixed2 = File(cacheDir, "mix2_${System.currentTimeMillis()}.m4a")
+            val mixed2 = File(cacheDir, "mix2_${System.currentTimeMillis()}.mp3")
             if (directMix(main, bg, mixed2, mVol, bVol, t, timeout)) {
                 return postProcess(mixed2, outFile, outExt, fx, fade, mSp, mPi, mEc, t, timeout)
             }
 
-            // ---- Path D: Java again with longer timeout ----
-            setProgressUi(70, "مسیر جایگزین...")
-            if (runJavaMixTimed(main, bg, outFile, mVol, bVol, 90_000L)) {
-                return Pair(outFile, "")
+            setProgressUi(75, "مسیر جایگزین...")
+            val javaOut2 = File(cacheDir, "java2_${System.currentTimeMillis()}.m4a")
+            if (runJavaMixTimed(main, bg, javaOut2, mVol, bVol, 120_000L)) {
+                return copyOrConvert(javaOut2, outFile, outExt, timeout)
             }
 
-            val hint = if (lastFfmpegLog.isNotBlank()) {
-                val short = lastFfmpegLog.takeLast(120).replace('\n', ' ')
-                "میکس ناموفق. $short"
+            val hint = if (lastFfmpegLog.contains("codec", ignoreCase = true) ||
+                lastFfmpegLog.contains("Encoder", ignoreCase = true)
+            ) {
+                "خطای کدک برطرف شد — دوباره نصب کنید. اگر باز خطا بود فایل MP3 امتحان کنید."
+            } else if (lastFfmpegLog.isNotBlank()) {
+                "میکس ناموفق: ${lastFfmpegLog.takeLast(80).replace('\n', ' ')}"
             } else {
-                "میکس ناموفق. فرمت فایل را عوض کنید (MP3 یا M4A)."
+                "میکس ناموفق. دو فایل کوتاه MP3 امتحان کنید."
             }
             return Pair(null, hint)
         } catch (ex: Throwable) {
@@ -580,19 +598,19 @@ class MainActivity : AppCompatActivity() {
         mVol: Float, bVol: Float, maxDur: Double, timeoutSec: Long
     ): Boolean {
         try { out.delete() } catch (_: Exception) {}
-        // Simplest labeled mix
         val filter =
             "[0:a]volume=${f(mVol.coerceIn(0.05f, 2f))}[a0];" +
             "[1:a]volume=${f(bVol.coerceIn(0.05f, 2f))}[a1];" +
             "[a0][a1]amix=inputs=2:duration=first[aout]"
 
+        // libmp3lame is in ffmpeg-kit-audio; aac is NOT
         val args = arrayOf(
             "-y",
             "-i", mainWav.absolutePath,
             "-i", bgWav.absolutePath,
             "-filter_complex", filter,
             "-map", "[aout]",
-            "-c:a", "aac",
+            "-c:a", "libmp3lame",
             "-b:a", "128k",
             "-ac", "2",
             "-ar", "44100",
@@ -601,15 +619,14 @@ class MainActivity : AppCompatActivity() {
         )
         if (ffmpegOk(args, out, timeoutSec)) return true
 
-        // Even simpler: no volume, no labels map
         try { out.delete() } catch (_: Exception) {}
         val args2 = arrayOf(
             "-y",
             "-i", mainWav.absolutePath,
             "-i", bgWav.absolutePath,
             "-filter_complex", "amix=inputs=2:duration=first",
-            "-c:a", "aac",
-            "-b:a", "128k",
+            "-c:a", "libmp3lame",
+            "-b:a", "96k",
             *(if (maxDur > 0.5) arrayOf("-t", d(maxDur)) else emptyArray()),
             out.absolutePath
         )
@@ -631,7 +648,7 @@ class MainActivity : AppCompatActivity() {
             "-i", bg.absolutePath,
             "-filter_complex", filter,
             "-map", "[aout]",
-            "-c:a", "aac",
+            "-c:a", "libmp3lame",
             "-b:a", "128k",
             "-ac", "2",
             *(if (maxDur > 0.5) arrayOf("-t", d(maxDur)) else arrayOf("-shortest")),
@@ -645,7 +662,7 @@ class MainActivity : AppCompatActivity() {
             "-i", main.absolutePath,
             "-i", bg.absolutePath,
             "-filter_complex", "amix=inputs=2:duration=first",
-            "-c:a", "aac",
+            "-c:a", "libmp3lame",
             "-b:a", "96k",
             *(if (maxDur > 0.5) arrayOf("-t", d(maxDur)) else emptyArray()),
             out.absolutePath
@@ -675,7 +692,7 @@ class MainActivity : AppCompatActivity() {
         if (outExt == "wav") {
             args.add("-c:a"); args.add("pcm_s16le")
         } else {
-            args.add("-c:a"); args.add("aac")
+            args.add("-c:a"); args.add("libmp3lame")
             args.add("-b:a"); args.add("128k")
         }
         if (t > 0.5) {
@@ -687,7 +704,6 @@ class MainActivity : AppCompatActivity() {
             try { mixed.delete() } catch (_: Exception) {}
             return Pair(outFile, "")
         }
-        // deliver without FX
         return copyOrConvert(mixed, outFile, outExt, timeoutSec)
     }
 
@@ -701,6 +717,20 @@ class MainActivity : AppCompatActivity() {
                 )
                 try { src.delete() } catch (_: Exception) {}
                 if (ok) Pair(dest, "") else Pair(null, "خروجی ساخته نشد")
+            } else if (outExt == "mp3" && !src.name.endsWith(".mp3")) {
+                try { dest.delete() } catch (_: Exception) {}
+                val ok = ffmpegOk(
+                    arrayOf(
+                        "-y", "-i", src.absolutePath,
+                        "-c:a", "libmp3lame", "-b:a", "128k", dest.absolutePath
+                    ),
+                    dest, timeoutSec
+                )
+                try { src.delete() } catch (_: Exception) {}
+                if (ok) Pair(dest, "") else {
+                    src.copyTo(dest, overwrite = true)
+                    if (dest.exists()) Pair(dest, "") else Pair(null, "خروجی ساخته نشد")
+                }
             } else {
                 src.copyTo(dest, overwrite = true)
                 try { src.delete() } catch (_: Exception) {}
@@ -736,7 +766,6 @@ class MainActivity : AppCompatActivity() {
         return parts.joinToString(",")
     }
 
-    /** Returns true if output file exists with content — even when FFmpeg exit code is non-zero */
     private fun ffmpegOk(args: Array<String>, outFile: File, timeoutSec: Long): Boolean {
         if (cancelFlag.get()) return false
         val done = AtomicBoolean(false)
@@ -748,7 +777,7 @@ class MainActivity : AppCompatActivity() {
                 val session = FFmpegKit.executeWithArguments(args)
                 codeOk.set(ReturnCode.isSuccess(session.returnCode))
                 try {
-                    logRef.set(session.failStackTrace ?: session.allLogsAsString?.takeLast(300) ?: "")
+                    logRef.set(session.failStackTrace ?: session.allLogsAsString?.takeLast(400) ?: "")
                 } catch (_: Exception) {}
             } catch (e: Throwable) {
                 logRef.set(e.message ?: "")
@@ -770,8 +799,6 @@ class MainActivity : AppCompatActivity() {
             try { thread.join(2000) } catch (_: Exception) {}
         }
         lastFfmpegLog = logRef.get() ?: ""
-
-        // KEY FIX: accept file if it was written, regardless of exit code
         if (outFile.exists() && outFile.length() > 500) return true
         return codeOk.get() && outFile.exists() && outFile.length() > 200
     }
@@ -903,8 +930,10 @@ class MainActivity : AppCompatActivity() {
         mainPitch = 1f; bgPitch = 1f
         mainEcho = 0f; bgEcho = 0f
         try { binding.cbFade.isChecked = false } catch (_: Exception) {}
+        binding.tvMainFile.visibility = View.VISIBLE
         binding.tvMainFile.text = getString(R.string.no_file_selected)
         binding.tvMainFile.setTextColor(Color.BLACK)
+        binding.tvBgFile.visibility = View.VISIBLE
         binding.tvBgFile.text = getString(R.string.no_file_selected)
         binding.tvBgFile.setTextColor(Color.BLACK)
         binding.btnSelectMain.text = getString(R.string.select_main_file)
@@ -955,12 +984,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 try {
-                    val name = "mixed_${System.currentTimeMillis()}.${f.extension.ifBlank { "m4a" }}"
+                    val name = "mixed_${System.currentTimeMillis()}.${f.extension.ifBlank { "mp3" }}"
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         val mime = when (f.extension.lowercase()) {
                             "wav" -> "audio/wav"
                             "mp3" -> "audio/mpeg"
-                            else -> "audio/mp4"
+                            else -> "audio/mpeg"
                         }
                         val values = ContentValues().apply {
                             put(MediaStore.Audio.Media.DISPLAY_NAME, name)
