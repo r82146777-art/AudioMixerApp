@@ -11,8 +11,8 @@ android {
         applicationId = "com.audiomixer.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 73
-        versionName = "1.0.73"
+        versionCode = 75
+        versionName = "1.0.75"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -58,6 +58,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.8.2")
 
     implementation("com.github.ZeroOneZeroR:android_audio_mixer:v1.1")
+    // audio package has LAME (mp3) but NOT aac — never use -c:a aac
     implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
 
     testImplementation("junit:junit:4.13.2")
