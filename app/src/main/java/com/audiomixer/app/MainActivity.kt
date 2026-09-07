@@ -46,7 +46,10 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class MainActivity : AppCompatActivity() {
 
@@ -92,20 +95,14 @@ class MainActivity : AppCompatActivity() {
     private val selectMainLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri == null) {
-            Toast.makeText(this, "انتخاب فایل اصلی لغو شد", Toast.LENGTH_SHORT).show()
-            return@registerForActivityResult
-        }
+        if (uri == null) return@registerForActivityResult
         onMainSelected(uri)
     }
 
     private val selectBgLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
-        if (uri == null) {
-            Toast.makeText(this, "انتخاب فایل پس‌زمینه لغو شد", Toast.LENGTH_SHORT).show()
-            return@registerForActivityResult
-        }
+        if (uri == null) return@registerForActivityResult
         onBgSelected(uri)
     }
 
@@ -120,17 +117,11 @@ class MainActivity : AppCompatActivity() {
             bgFileName = savedInstanceState.getString("bgFileName") ?: ""
             savedInstanceState.getString("mainPath")?.let { path ->
                 val f = File(path)
-                if (f.exists()) {
-                    mainFile = f
-                    updateMainUi("✅ ${mainFileName.ifBlank { f.name }}")
-                }
+                if (f.exists()) { mainFile = f; updateMainUi("✅ ${mainFileName.ifBlank { f.name }}") }
             }
             savedInstanceState.getString("bgPath")?.let { path ->
                 val f = File(path)
-                if (f.exists()) {
-                    bgFile = f
-                    updateBgUi("✅ ${bgFileName.ifBlank { f.name }}")
-                }
+                if (f.exists()) { bgFile = f; updateBgUi("✅ ${bgFileName.ifBlank { f.name }}") }
             }
         }
 
@@ -156,15 +147,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_guide -> {
-                showTextDialog(getString(R.string.menu_guide), getString(R.string.guide_text)); true
-            }
-            R.id.menu_about -> {
-                showAboutDialog(); true
-            }
-            R.id.menu_effects -> {
-                startActivity(Intent(this, EffectsActivity::class.java)); true
-            }
+            R.id.menu_guide -> { showTextDialog(getString(R.string.menu_guide), getString(R.string.guide_text)); true }
+            R.id.menu_about -> { showAboutDialog(); true }
+            R.id.menu_effects -> { startActivity(Intent(this, EffectsActivity::class.java)); true }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -224,7 +209,6 @@ class MainActivity : AppCompatActivity() {
         val name = resolveName(uri)
         mainFileName = name
         updateMainUi("در حال کپی... $name")
-        Toast.makeText(this, "فایل اصلی انتخاب شد: $name", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "main", name) }
             if (file != null && file.exists()) {
@@ -242,7 +226,6 @@ class MainActivity : AppCompatActivity() {
         val name = resolveName(uri)
         bgFileName = name
         updateBgUi("در حال کپی... $name")
-        Toast.makeText(this, "فایل پس‌زمینه انتخاب شد: $name", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) { copyUriToCache(uri, "bg", name) }
             if (file != null && file.exists()) {
@@ -259,14 +242,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateMainUi(text: String) {
         binding.tvMainFile.text = text
         binding.tvMainFile.setTextColor(if (text.startsWith("✅")) Color.parseColor("#1B5E20") else Color.BLACK)
-        binding.tvMainFile.contentDescription = "فایل اصلی: $text"
         binding.btnSelectMain.text = if (text.startsWith("✅")) "تغییر فایل اصلی" else getString(R.string.select_main_file)
     }
 
     private fun updateBgUi(text: String) {
         binding.tvBgFile.text = text
         binding.tvBgFile.setTextColor(if (text.startsWith("✅")) Color.parseColor("#1B5E20") else Color.BLACK)
-        binding.tvBgFile.contentDescription = "فایل پس‌زمینه: $text"
         binding.btnSelectBg.text = if (text.startsWith("✅")) "تغییر فایل پس‌زمینه" else getString(R.string.select_bg_file)
     }
 
@@ -280,9 +261,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } catch (_: Exception) {}
-        if (name.isNullOrBlank()) {
-            name = uri.lastPathSegment?.substringAfterLast('/') ?: "audio_${System.currentTimeMillis()}"
-        }
+        if (name.isNullOrBlank()) name = uri.lastPathSegment?.substringAfterLast('/') ?: "audio_${System.currentTimeMillis()}"
         return name!!
     }
 
@@ -298,7 +277,6 @@ class MainActivity : AppCompatActivity() {
                             mime.contains("mpeg") || mime.contains("mp3") -> "mp3"
                             mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") -> "m4a"
                             mime.contains("wav") -> "wav"
-                            mime.contains("ogg") -> "ogg"
                             else -> "m4a"
                         }
                     }
@@ -308,8 +286,7 @@ class MainActivity : AppCompatActivity() {
             FileOutputStream(file).use { out -> input.copyTo(out) }
             input.close()
             if (file.exists() && file.length() > 0) file else null
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
             null
         }
     }
@@ -320,15 +297,14 @@ class MainActivity : AppCompatActivity() {
             setPadding(48, 24, 48, 24)
         }
         fun addSeek(label: String, max: Int, progress: Int, onChange: (Int) -> Unit) {
-            val tv = TextView(this).apply { text = "$label: $progress"; contentDescription = label }
+            val tv = TextView(this).apply { text = "$label: $progress" }
             layout.addView(tv)
             layout.addView(SeekBar(this).apply {
                 this.max = max
                 this.progress = progress
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                        tv.text = "$label: $p"
-                        onChange(p)
+                        tv.text = "$label: $p"; onChange(p)
                     }
                     override fun onStartTrackingTouch(s: SeekBar?) {}
                     override fun onStopTrackingTouch(s: SeekBar?) {}
@@ -339,7 +315,6 @@ class MainActivity : AppCompatActivity() {
         val spd = if (isMain) (mainSpeed * 100).toInt() else (bgSpeed * 100).toInt()
         val pit = if (isMain) (mainPitch * 100).toInt() else (bgPitch * 100).toInt()
         val echo = if (isMain) (mainEcho * 100).toInt() else (bgEcho * 100).toInt()
-
         addSeek("صدا (۰–۱۰۰)", 100, vol) { p -> if (isMain) mainVolume = p / 100f else bgVolume = p / 100f }
         addSeek("سرعت (۵۰–۲۰۰٪)", 200, spd.coerceIn(50, 200)) { p ->
             val v = p.coerceIn(50, 200) / 100f
@@ -350,7 +325,6 @@ class MainActivity : AppCompatActivity() {
             if (isMain) mainPitch = v else bgPitch = v
         }
         addSeek("اکو (۰–۱۰۰)", 100, echo) { p -> if (isMain) mainEcho = p / 100f else bgEcho = p / 100f }
-
         AlertDialog.Builder(this)
             .setTitle(if (isMain) "تنظیمات فایل اصلی" else "تنظیمات فایل پس‌زمینه")
             .setView(layout)
@@ -367,9 +341,7 @@ class MainActivity : AppCompatActivity() {
             .setView(checkBox)
             .setPositiveButton(getString(R.string.invite_join)) { _, _ ->
                 if (checkBox.isChecked) prefs.edit().putBoolean("dont_show_invite", true).apply()
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Akademi_hamdel")))
-                } catch (_: Exception) {}
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Akademi_hamdel"))) } catch (_: Exception) {}
             }
             .setNegativeButton(getString(R.string.invite_cancel)) { _, _ ->
                 if (checkBox.isChecked) prefs.edit().putBoolean("dont_show_invite", true).apply()
@@ -434,28 +406,23 @@ class MainActivity : AppCompatActivity() {
         binding.btnPlay.isEnabled = false
         binding.btnSave.isEnabled = false
 
-        var durationSec = getAudioDurationSec(main)
-        if (durationSec < 0.5) durationSec = 0.0
+        val durationSec = getAudioDurationSec(main).let { if (it < 0.5) 0.0 else it }
+        val bgDur = getAudioDurationSec(bg).let { if (it < 0.3) 1.0 else it }
         val mins = if (durationSec > 0) durationSec / 60.0 else 0.0
-        binding.tvStatus.text = if (mins >= 1) {
+        binding.tvStatus.text = if (mins >= 1)
             String.format(Locale.US, "در حال میکس فایل %.0f دقیقه‌ای...", mins)
-        } else {
+        else
             "در حال میکس سریع..."
-        }
 
         val outExt = if (binding.rbWav.isChecked) "wav" else "m4a"
         val outFile = File(cacheDir, "mixed_${System.currentTimeMillis()}.$outExt")
 
         val fade = binding.cbFade.isChecked
         val fx = needsFx()
-        val mVol = mainVolume
-        val bVol = bgVolume
-        val mSp = mainSpeed
-        val bSp = bgSpeed
-        val mPi = mainPitch
-        val bPi = bgPitch
-        val mEc = mainEcho
-        val bEc = bgEcho
+        val mVol = mainVolume; val bVol = bgVolume
+        val mSp = mainSpeed; val bSp = bgSpeed
+        val mPi = mainPitch; val bPi = bgPitch
+        val mEc = mainEcho; val bEc = bgEcho
         val overlays = parseOverlays()
 
         startProgress(outFile, durationSec)
@@ -463,7 +430,7 @@ class MainActivity : AppCompatActivity() {
         mixJob = lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 mixInternal(
-                    main, bg, outFile, durationSec, outExt,
+                    main, bg, outFile, durationSec, bgDur, outExt,
                     fx, fade, mVol, bVol, mSp, bSp, mPi, bPi, mEc, bEc, overlays
                 )
             }
@@ -475,7 +442,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun mixInternal(
         main: File, bg: File, outFile: File,
-        durationSec: Double, outExt: String,
+        mainDur: Double, bgDur: Double, outExt: String,
         fx: Boolean, fade: Boolean,
         mVol: Float, bVol: Float,
         mSp: Float, bSp: Float,
@@ -487,29 +454,26 @@ class MainActivity : AppCompatActivity() {
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
             try { outFile.delete() } catch (_: Exception) {}
 
-            // Java only for short files without FX (fastest path)
-            val useJavaFirst = !fx && overlays.isEmpty() && durationSec > 0 && durationSec <= 120.0
-            if (useJavaFirst || (!fx && overlays.isEmpty() && durationSec <= 0)) {
-                if (runJavaMix(main, bg, outFile, mVol, bVol)) {
-                    return Pair(outFile, "")
-                }
+            // Short + no FX → fast Java
+            if (!fx && overlays.isEmpty() && mainDur > 0 && mainDur <= 90.0) {
+                if (runJavaMix(main, bg, outFile, mVol, bVol)) return Pair(outFile, "")
             }
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // FFmpeg with progressive fallbacks (full FX → simpler → volume)
-            if (runFfmpegMix(main, bg, outFile, durationSec, outExt, fade, mVol, bVol, mSp, bSp, mPi, bPi, mEc, bEc, overlays)) {
-                return Pair(outFile, "")
-            }
+            // FFmpeg (finite loop + hard timeout) — works for short & long
+            if (runFfmpegSafe(
+                    main, bg, outFile, mainDur, bgDur, outExt,
+                    fade, mVol, bVol, mSp, bSp, mPi, bPi, mEc, bEc, overlays
+                )
+            ) return Pair(outFile, "")
 
             if (cancelFlag.get()) return Pair(null, "میکس لغو شد")
 
-            // Always try Java as last resort so user gets a file
-            if (runJavaMix(main, bg, outFile, mVol, bVol)) {
-                return Pair(outFile, "")
-            }
+            // Last resort Java even for longer files
+            if (runJavaMix(main, bg, outFile, mVol, bVol)) return Pair(outFile, "")
 
-            return Pair(null, "میکس انجام نشد. فرمت فایل را عوض کنید یا دوباره تلاش کنید.")
+            return Pair(null, "میکس انجام نشد. دوباره تلاش کنید.")
         } catch (t: Throwable) {
             return Pair(null, "خطا: ${t.message ?: "نامشخص"}")
         }
@@ -569,24 +533,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Compatible filter chain for ffmpeg-kit */
     private fun trackFilters(vol: Float, speed: Float, pitch: Float, echo: Float): String {
         val parts = ArrayList<String>()
         parts.add("volume=${f(vol.coerceIn(0f, 2f))}")
-
         val p = pitch.coerceIn(0.5f, 2f)
         if (kotlin.math.abs(p - 1f) > 0.03f) {
             parts.add("asetrate=${f(44100f * p)}")
             parts.add("aresample=44100")
-            val inv = (1f / p).coerceIn(0.5f, 2f)
-            parts.add("atempo=${f(inv)}")
+            parts.add("atempo=${f((1f / p).coerceIn(0.5f, 2f))}")
         }
-
         val sp = speed.coerceIn(0.5f, 2f)
-        if (kotlin.math.abs(sp - 1f) > 0.03f) {
-            parts.add("atempo=${f(sp)}")
-        }
-
+        if (kotlin.math.abs(sp - 1f) > 0.03f) parts.add("atempo=${f(sp)}")
         if (echo > 0.05f) {
             val g = f((0.4f * echo).coerceIn(0.12f, 0.65f))
             parts.add("aecho=0.8:$g:60:0.35")
@@ -594,9 +551,15 @@ class MainActivity : AppCompatActivity() {
         return parts.joinToString(",")
     }
 
-    private fun runFfmpegMix(
+    /**
+     * Hang-proof FFmpeg:
+     * - finite stream_loop count (never -1 infinite)
+     * - always -t duration
+     * - async + hard timeout so we never stick at 90%
+     */
+    private fun runFfmpegSafe(
         main: File, bg: File, outFile: File,
-        durationSec: Double, outExt: String,
+        mainDur: Double, bgDur: Double, outExt: String,
         fade: Boolean,
         mVol: Float, bVol: Float,
         mSp: Float, bSp: Float,
@@ -604,18 +567,9 @@ class MainActivity : AppCompatActivity() {
         mEc: Float, bEc: Float,
         overlays: List<Pair<String, Long>>
     ): Boolean {
-        if (cancelFlag.get()) return false
-
-        val t = if (durationSec > 0.5) durationSec else 0.0
-        val bitrate = when {
-            t > 1200 -> "64k"
-            t > 300 -> "96k"
-            else -> "128k"
-        }
-
-        // Attempt 1: full FX
-        if (execFfmpeg(
-                main, bg, outFile, t, outExt, bitrate, fade,
+        // 1) Full FX
+        if (execFfmpegOnce(
+                main, bg, outFile, mainDur, bgDur, outExt, fade,
                 trackFilters(mVol, mSp, mPi, mEc),
                 trackFilters(bVol, bSp, bPi, bEc),
                 overlays
@@ -624,9 +578,9 @@ class MainActivity : AppCompatActivity() {
 
         if (cancelFlag.get()) return false
 
-        // Attempt 2: volume + speed + fade (no pitch/echo)
-        if (execFfmpeg(
-                main, bg, outFile, t, outExt, bitrate, fade,
+        // 2) Volume + speed + fade
+        if (execFfmpegOnce(
+                main, bg, outFile, mainDur, bgDur, outExt, fade,
                 trackFilters(mVol, mSp, 1f, 0f),
                 trackFilters(bVol, bSp, 1f, 0f),
                 emptyList()
@@ -635,42 +589,49 @@ class MainActivity : AppCompatActivity() {
 
         if (cancelFlag.get()) return false
 
-        // Attempt 3: volume + fade only
-        if (execFfmpeg(
-                main, bg, outFile, t, outExt, bitrate, fade,
-                "volume=${f(mVol.coerceIn(0f, 2f))}",
-                "volume=${f(bVol.coerceIn(0f, 2f))}",
-                emptyList()
-            )
-        ) return true
-
-        if (cancelFlag.get()) return false
-
-        // Attempt 4: simplest possible mix
-        return execFfmpeg(
-            main, bg, outFile, t, outExt, bitrate, false,
+        // 3) Volume only + optional fade
+        return execFfmpegOnce(
+            main, bg, outFile, mainDur, bgDur, outExt, fade,
             "volume=${f(mVol.coerceIn(0f, 2f))}",
             "volume=${f(bVol.coerceIn(0f, 2f))}",
             emptyList()
         )
     }
 
-    private fun execFfmpeg(
+    private fun execFfmpegOnce(
         main: File, bg: File, outFile: File,
-        durationSec: Double, outExt: String, bitrate: String,
+        mainDur: Double, bgDur: Double, outExt: String,
         fade: Boolean,
         mainFilter: String,
         bgFilter: String,
         overlays: List<Pair<String, Long>>
     ): Boolean {
+        if (cancelFlag.get()) return false
         return try {
             try { outFile.delete() } catch (_: Exception) {}
+
+            val t = if (mainDur > 0.5) mainDur else 0.0
+
+            // Finite loops only — never infinite (-1) which hangs on many devices
+            val loops = if (t > 0.5 && bgDur > 0.3 && t > bgDur + 0.5) {
+                ((t / bgDur).toInt() + 1).coerceIn(1, 400)
+            } else {
+                0 // no loop needed
+            }
+
+            val bitrate = when {
+                t > 1800 -> "48k"
+                t > 600 -> "64k"
+                t > 120 -> "96k"
+                else -> "128k"
+            }
 
             val args = ArrayList<String>()
             args.add("-y")
             args.add("-i"); args.add(main.absolutePath)
-            // Loop bg track to cover main length (finite via -t below)
-            args.add("-stream_loop"); args.add("-1")
+            if (loops > 0) {
+                args.add("-stream_loop"); args.add(loops.toString())
+            }
             args.add("-i"); args.add(bg.absolutePath)
             for ((path, _) in overlays) {
                 args.add("-i"); args.add(path)
@@ -679,21 +640,18 @@ class MainActivity : AppCompatActivity() {
             val sb = StringBuilder()
             sb.append("[0:a]").append(mainFilter).append("[a0];")
             sb.append("[1:a]").append(bgFilter).append("[a1]")
-
             val labels = ArrayList<String>()
-            labels.add("[a0]")
-            labels.add("[a1]")
+            labels.add("[a0]"); labels.add("[a1]")
             overlays.forEachIndexed { i, o ->
                 val idx = i + 2
                 sb.append(";[$idx:a]volume=1.0,adelay=${o.second}|${o.second}[e$i]")
                 labels.add("[e$i]")
             }
-            sb.append(";")
-            sb.append(labels.joinToString(""))
+            sb.append(";").append(labels.joinToString(""))
             sb.append("amix=inputs=${labels.size}:duration=first:dropout_transition=0")
 
-            if (fade && durationSec > 2.5) {
-                val outSt = d((durationSec - 1.2).coerceAtLeast(0.0))
+            if (fade && t > 2.5) {
+                val outSt = d((t - 1.2).coerceAtLeast(0.0))
                 sb.append("[mix];[mix]afade=t=in:st=0:d=0.8,afade=t=out:st=$outSt:d=1.2[a]")
             } else if (fade) {
                 sb.append("[mix];[mix]afade=t=in:st=0:d=0.3,afade=t=out:st=0:d=0.3[a]")
@@ -703,7 +661,6 @@ class MainActivity : AppCompatActivity() {
 
             args.add("-filter_complex"); args.add(sb.toString())
             args.add("-map"); args.add("[a]")
-
             if (outExt == "wav") {
                 args.add("-c:a"); args.add("pcm_s16le")
             } else {
@@ -712,20 +669,49 @@ class MainActivity : AppCompatActivity() {
             }
             args.add("-ac"); args.add("2")
             args.add("-ar"); args.add("44100")
-
-            if (durationSec > 0.5) {
-                args.add("-t"); args.add(d(durationSec))
+            if (t > 0.5) {
+                args.add("-t"); args.add(d(t))
             } else {
                 args.add("-shortest")
             }
             args.add(outFile.absolutePath)
 
-            val session = FFmpegKit.executeWithArguments(args.toTypedArray())
-            if (cancelFlag.get()) {
+            // Hard timeout so UI never sticks at 90%
+            val timeoutSec = when {
+                t > 3600 -> (t * 0.6).toLong().coerceIn(120, 3600)
+                t > 600 -> (t * 0.5).toLong().coerceIn(90, 900)
+                t > 60 -> (t * 0.4).toLong().coerceIn(45, 300)
+                else -> 90L
+            }
+
+            val latch = CountDownLatch(1)
+            val okRef = AtomicBoolean(false)
+            val errRef = AtomicReference<String?>(null)
+
+            FFmpegKit.executeWithArgumentsAsync(args.toTypedArray()) { session ->
+                try {
+                    okRef.set(
+                        ReturnCode.isSuccess(session.returnCode) &&
+                            outFile.exists() && outFile.length() > 200
+                    )
+                } catch (e: Exception) {
+                    errRef.set(e.message)
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            val finished = latch.await(timeoutSec, TimeUnit.SECONDS)
+            if (!finished || cancelFlag.get()) {
+                try { FFmpegKit.cancel() } catch (_: Throwable) {}
+                // If partial file is large enough, accept it
+                if (outFile.exists() && outFile.length() > 50_000) {
+                    return true
+                }
                 try { outFile.delete() } catch (_: Exception) {}
                 return false
             }
-            ReturnCode.isSuccess(session.returnCode) && outFile.exists() && outFile.length() > 200
+            okRef.get()
         } catch (_: Throwable) {
             false
         }
@@ -734,24 +720,23 @@ class MainActivity : AppCompatActivity() {
     private fun startProgress(outFile: File, durationSec: Double) {
         stopProgress()
         val start = System.currentTimeMillis()
-        // Optimistic estimate — UI feels fast
         val estimateMs = when {
-            durationSec > 1800 -> (durationSec * 120).toLong()
-            durationSec > 300 -> (durationSec * 80).toLong()
-            durationSec > 60 -> (durationSec * 50).toLong()
-            else -> 6_000L
-        }.coerceAtLeast(4_000L)
+            durationSec > 1800 -> (durationSec * 100).toLong()
+            durationSec > 300 -> (durationSec * 70).toLong()
+            durationSec > 60 -> (durationSec * 40).toLong()
+            else -> 5_000L
+        }.coerceAtLeast(3_000L)
 
         progressRunnable = object : Runnable {
             override fun run() {
                 if (!isMixing) return
                 val elapsed = System.currentTimeMillis() - start
-                val byTime = ((elapsed * 90) / estimateMs).toInt().coerceIn(5, 90)
+                val byTime = ((elapsed * 88) / estimateMs).toInt().coerceIn(5, 88)
                 val bySize = if (outFile.exists() && durationSec > 1) {
-                    val expected = (durationSec * 10000).toLong().coerceAtLeast(40_000L)
-                    ((outFile.length() * 90) / expected).toInt().coerceIn(0, 90)
+                    val expected = (durationSec * 8000).toLong().coerceAtLeast(30_000L)
+                    ((outFile.length() * 88) / expected).toInt().coerceIn(0, 88)
                 } else 0
-                val p = maxOf(byTime, bySize).coerceIn(5, 92)
+                val p = maxOf(byTime, bySize).coerceIn(5, 90)
                 binding.progressBar.progress = p
                 binding.tvStatus.text = "در حال میکس... $p٪"
                 uiHandler.postDelayed(this, 400)
@@ -799,27 +784,18 @@ class MainActivity : AppCompatActivity() {
         stopProgress()
         binding.btnMix.isEnabled = true
         binding.progressBar.visibility = View.GONE
-
         try { mediaPlayer?.stop() } catch (_: Exception) {}
         mediaPlayer?.release()
         mediaPlayer = null
         isPlaying = false
-
-        mainFile = null
-        bgFile = null
-        mainFileName = ""
-        bgFileName = ""
+        mainFile = null; bgFile = null
+        mainFileName = ""; bgFileName = ""
         outputFile = null
-        mainVolume = 1f
-        bgVolume = 0.5f
-        mainSpeed = 1f
-        bgSpeed = 1f
-        mainPitch = 1f
-        bgPitch = 1f
-        mainEcho = 0f
-        bgEcho = 0f
+        mainVolume = 1f; bgVolume = 0.5f
+        mainSpeed = 1f; bgSpeed = 1f
+        mainPitch = 1f; bgPitch = 1f
+        mainEcho = 0f; bgEcho = 0f
         try { binding.cbFade.isChecked = false } catch (_: Exception) {}
-
         updateMainUi(getString(R.string.no_file_selected))
         updateBgUi(getString(R.string.no_file_selected))
         binding.tvStatus.text = "آماده"
@@ -889,18 +865,18 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                         if (!dir.exists()) dir.mkdirs()
-                        val dest = File(dir, name)
                         FileInputStream(f).use { input ->
-                            FileOutputStream(dest).use { output -> input.copyTo(output) }
+                            FileOutputStream(File(dir, name)).use { output -> input.copyTo(output) }
                         }
                         true
                     }
-                } catch (_: Exception) {
-                    false
-                }
+                } catch (_: Exception) { false }
             }
-            if (ok) Toast.makeText(this@MainActivity, "در Downloads ذخیره شد", Toast.LENGTH_LONG).show()
-            else Toast.makeText(this@MainActivity, "ذخیره ناموفق", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this@MainActivity,
+                if (ok) "در Downloads ذخیره شد" else "ذخیره ناموفق",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -913,20 +889,13 @@ class MainActivity : AppCompatActivity() {
             binding.btnRecord.text = getString(R.string.record_start)
             binding.btnDeleteRecord.isEnabled = recordedFile != null
             binding.btnUseRecordAsMain.isEnabled = recordedFile != null
-            if (recordedFile != null && recordedFile!!.exists()) {
-                Toast.makeText(this, "ضبط تمام شد", Toast.LENGTH_SHORT).show()
-            }
             return
         }
         try {
             val out = File(cacheDir, "rec_${System.currentTimeMillis()}.m4a")
             recordedFile = out
-            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(this)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
-            }
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this)
+            else @Suppress("DEPRECATION") MediaRecorder()
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -936,7 +905,6 @@ class MainActivity : AppCompatActivity() {
             mediaRecorder = recorder
             isRecording = true
             binding.btnRecord.text = getString(R.string.record_stop)
-            Toast.makeText(this, "در حال ضبط...", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "ضبط ممکن نیست: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -948,7 +916,6 @@ class MainActivity : AppCompatActivity() {
         recordedFile = null
         binding.btnDeleteRecord.isEnabled = false
         binding.btnUseRecordAsMain.isEnabled = false
-        Toast.makeText(this, "ضبط حذف شد", Toast.LENGTH_SHORT).show()
     }
 
     private fun useRecordAsMain() {
@@ -960,6 +927,5 @@ class MainActivity : AppCompatActivity() {
         mainFile = f
         mainFileName = f.name
         updateMainUi("✅ ${f.name}")
-        Toast.makeText(this, "ضبط به عنوان فایل اصلی تنظیم شد", Toast.LENGTH_SHORT).show()
     }
 }
